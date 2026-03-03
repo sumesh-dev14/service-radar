@@ -1,0 +1,11 @@
+{
+    "name": "service-radar",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"cyan,magenta\" \"sh -c 'cd backend && npm run dev'\" \"sh -c 'cd frontend && npm run dev'\""
+    },
+    "devDependencies": {
+        "concurrently": "^9.0.0"
+    }
+}
