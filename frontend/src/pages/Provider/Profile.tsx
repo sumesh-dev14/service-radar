@@ -1,302 +1,312 @@
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { useTheme } from '../../providers/ThemeProvider';
-import { ArrowLeft, AlertCircle, CheckCircle, Save } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import api from '../../services/api';
+/**
+ * Provider Profile — Service Radar
+ * Ref: §Provider Endpoints, §Key Features (Provider Management), Phase 16
+ *
+ * Two modes (auto-detected from providerStore.myProfile):
+ *
+ * CREATE mode (no profile yet):
+ *   Form: bio, category (dropdown from API), price ($/hr), location (geolocation button or manual lat/lng)
+ *   → POST /api/providers/profile
+ *
+ * EDIT mode (profile exists):
+ *   Pre-filled form: bio + price only (category/location locked after creation)
+ *   → PUT /api/providers/profile
+ *
+ * Displays current profile card below form when in EDIT mode.
+ */
 
-interface FormData {
-  bio: string;
-  category: string;
-  price: string;
-  latitude: string;
-  longitude: string;
-  isAvailable: boolean;
+import { useEffect, useState, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { LocateFixed, Loader2, CheckCircle2, AlertCircle, ChevronLeft, Star } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useProviderStore } from '@/store/providerStore'
+import { getCategories } from '@/services/categoryService'
+import { useGeolocation } from '@/hooks/useGeolocation'
+import { useToastContext } from '@/components/Common/Toast'
+import type { Category } from '@/types/models'
+
+// ── Type helpers ──────────────────────────────────────────────────────────────
+
+function isPopulatedCategory(v: unknown): v is { _id: string; name: string } {
+    return typeof v === 'object' && v !== null && 'name' in v
 }
 
+// ── Input row ─────────────────────────────────────────────────────────────────
+
+function Field({ id, label, children, hint }: { id?: string; label: string; children: React.ReactNode; hint?: string }) {
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label htmlFor={id} style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                {label}
+            </label>
+            {children}
+            {hint && <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', lineHeight: 1.45 }}>{hint}</p>}
+        </div>
+    )
+}
+
+const INPUT_STYLE: React.CSSProperties = {
+    padding: '0.625rem 0.875rem',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-bg)',
+    color: 'var(--color-fg)',
+    fontFamily: 'Poppins, sans-serif',
+    fontSize: '0.9rem',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+}
+
+// ── ProviderProfile page ──────────────────────────────────────────────────────
+
 export default function ProviderProfile() {
-  const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
-  const { theme } = useTheme();
+    const navigate = useNavigate()
+    const toast = useToastContext()
+    const { myProfile, profileLoading, profileError, loadMyProfile, createMyProfile, updateMyProfile } = useProviderStore()
+    const { location, isLoading: geoLoading, error: geoError, getLocation } = useGeolocation()
 
-  const [formData, setFormData] = useState<FormData>({
-    bio: '',
-    category: '',
-    price: '',
-    latitude: '',
-    longitude: '',
-    isAvailable: true,
-  });
+    const [categories, setCategories] = useState<Category[]>([])
+    const [serverError, setServerError] = useState<string | null>(null)
 
-  const [categories, setCategories] = useState<any[]>([]);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [profileLoaded, setProfileLoaded] = useState(false);
+    // Form state
+    const [bio, setBio] = useState('')
+    const [price, setPrice] = useState('')
+    const [categoryId, setCategoryId] = useState('')
+    const [manualLat, setManualLat] = useState('')
+    const [manualLng, setManualLng] = useState('')
 
-  if (!isAuthenticated) {
-    navigate('/login');
-    return null;
-  }
+    const initialized = useRef(false)
 
-  useEffect(() => {
-    const fetchCategoriesAndProfile = async () => {
-      try {
-        const catRes = await api.get('/categories');
-        setCategories(catRes.data.data || []);
-        setProfileLoaded(true);
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to load categories');
-        setProfileLoaded(true);
-      }
-    };
+    // Load profile + categories on mount
+    useEffect(() => {
+        getCategories().then(setCategories).catch(() => { })
+        loadMyProfile(true)  // Force fresh load to avoid stale cache
+        initialized.current = false  // Reset initialized flag to re-initialize form
+    }, [loadMyProfile])
 
-    fetchCategoriesAndProfile();
-  }, []);
+    // Pre-fill form when myProfile loads
+    useEffect(() => {
+        if (myProfile && !initialized.current) {
+            initialized.current = true
+            setBio(myProfile.bio ?? '')
+            setPrice(String(myProfile.price ?? ''))
+            setCategoryId(isPopulatedCategory(myProfile.categoryId) ? myProfile.categoryId._id : String(myProfile.categoryId))
+            setManualLat(String(myProfile.location?.lat ?? ''))
+            setManualLng(String(myProfile.location?.lng ?? ''))
+        }
+    }, [myProfile])
 
-  const handleChange = (e: any) => {
-    const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value,
-    });
-  };
+    // When geolocation resolves, populate manual fields too (for display)
+    useEffect(() => {
+        if (location) {
+            setManualLat(String(location.lat))
+            setManualLng(String(location.lng))
+        }
+    }, [location])
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    setError('');
+    const isEditMode = !!myProfile
 
-    const lat = parseFloat(formData.latitude);
-    const lng = parseFloat(formData.longitude);
+    // ── Validation ──────────────────────────────────────────────────────────────
 
-    if (isNaN(lat) || isNaN(lng)) {
-      setError('Please enter valid latitude and longitude');
-      return;
+    const validate = (): string | null => {
+        if (bio.trim().length < 20) return 'Bio must be at least 20 characters.'
+        const priceNum = Number(price)
+        if (!price || isNaN(priceNum) || priceNum <= 0) return 'Please enter a valid hourly rate (e.g. 50).'
+        if (!isEditMode && !categoryId) return 'Please select a service category.'
+        const lat = Number(manualLat)
+        const lng = Number(manualLng)
+        if (!isEditMode) {
+            if (!manualLat || !manualLng) return 'Location is required. Use the button or enter coordinates manually.'
+            if (isNaN(lat) || lat < -90 || lat > 90) return 'Latitude must be between –90 and 90.'
+            if (isNaN(lng) || lng < -180 || lng > 180) return 'Longitude must be between –180 and 180.'
+        }
+        return null
     }
 
-    if (lat < -90 || lat > 90) {
-      setError('Latitude must be between -90 and 90');
-      return;
+    // ── Submit ──────────────────────────────────────────────────────────────────
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setServerError(null)
+        const err = validate()
+        if (err) { setServerError(err); return }
+
+        const payload: Parameters<typeof createMyProfile>[0] = {
+            bio: bio.trim(),
+            price: Number(price),
+        }
+
+        if (!isEditMode) {
+            payload.categoryId = categoryId
+            payload.location = {
+                lat: Number(manualLat),
+                lng: Number(manualLng),
+            }
+        }
+
+        try {
+            if (isEditMode) {
+                await updateMyProfile(payload)
+                toast.success('Profile updated successfully!')
+            } else {
+                await createMyProfile(payload)
+                // Force refresh the profile to ensure it's loaded
+                await loadMyProfile(true)
+                toast.success('Profile created! You are now discoverable by customers.')
+                navigate('/provider/dashboard')
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Something went wrong.'
+            setServerError(msg)
+        }
     }
 
-    if (lng < -180 || lng > 180) {
-      setError('Longitude must be between -180 and 180');
-      return;
-    }
+    const currentCategoryName = myProfile
+        ? isPopulatedCategory(myProfile.categoryId)
+            ? myProfile.categoryId.name
+            : 'Your Category'
+        : null
 
-    try {
-      setIsLoading(true);
+    return (
+        <main style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-fg)', padding: '2rem 1.5rem' }}>
+            <div style={{ maxWidth: 680, margin: '0 auto' }}>
 
-      const price = parseFloat(formData.price);
-      if (isNaN(price) || price <= 0) {
-        setError('Please enter a valid price');
-        return;
-      }
-
-      const payload = {
-        categoryId: formData.category,
-        bio: formData.bio,
-        price: price,
-        location: { lat, lng },
-      };
-
-      await api.post('/providers/profile', payload);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to save profile');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (!profileLoaded) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
-  }
-
-  return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-background' : 'bg-background'}`}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <button
-          onClick={() => navigate('/provider/dashboard')}
-          className="flex items-center gap-2 text-primary hover:text-primary/80 mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </button>
-
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Your Profile</h1>
-          <p className="text-foreground/60">Update your service provider information</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className={`lg:col-span-1 rounded-xl p-6 h-fit ${
-            theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-          }`}>
-            <div className="text-center mb-6">
-              <div className="w-20 h-20 bg-linear-to-br from-primary to-accent rounded-full mx-auto mb-4" />
-              <h2 className="text-lg font-semibold text-foreground mb-1">{user?.name}</h2>
-              <span className="text-foreground/60 text-sm">(24 reviews)</span>
-            </div>
-
-            <div className="space-y-3 pt-6 border-t border-border/30">
-              <div>
-                <p className="text-foreground/60 text-xs uppercase tracking-wide mb-1">Total Bookings</p>
-                <p className="text-2xl font-bold text-foreground">24</p>
-              </div>
-              <div>
-                <p className="text-foreground/60 text-xs uppercase tracking-wide mb-1">Completion Rate</p>
-                <p className="text-2xl font-bold text-foreground">95%</p>
-              </div>
-              <div>
-                <p className="text-foreground/60 text-xs uppercase tracking-wide mb-1">Member Since</p>
-                <p className="text-foreground font-medium">Jan 2026</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className={`rounded-xl p-6 ${
-              theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-            }`}>
-              {error && (
-                <div className="mb-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-                </div>
-              )}
-
-              {success && (
-                <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
-                  <p className="text-green-700 dark:text-green-300 text-sm">Profile updated successfully!</p>
-                </div>
-              )}
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Bio *</label>
-                  <textarea
-                    name="bio"
-                    value={formData.bio}
-                    onChange={handleChange}
-                    placeholder="Describe your services and experience"
-                    rows={4}
-                    className={`w-full px-4 py-2 rounded-lg border ${
-                      theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                    } text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition`}
-                    required
-                  />
+                {/* ── Header ──────────────────────────────────────────────────────── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+                    <motion.button onClick={() => navigate('/provider/dashboard')} whileHover={{ x: -3 }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', padding: 0 }}>
+                        <ChevronLeft size={16} /> Dashboard
+                    </motion.button>
+                    <span style={{ color: 'var(--color-border)' }}>/</span>
+                    <h1 style={{ margin: 0, fontFamily: 'Lora, serif', fontSize: '1.75rem', color: 'var(--color-fg)' }}>
+                        {isEditMode ? 'Edit Profile' : 'Create Your Profile'}
+                    </h1>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Service Category *</label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleChange}
-                    className={`w-full px-4 py-2.5 rounded-lg border ${
-                      theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                    } text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition`}
-                    required
-                  >
-                    <option value="">Select a category</option>
-                    {categories.map((cat: any) => (
-                      <option key={cat._id} value={cat._id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* ── Current profile display (edit mode) ─────────────────────────── */}
+                {isEditMode && myProfile && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'center' }}
+                    >
+                        <div style={{ flex: 1, minWidth: 200 }}>
+                            <p style={{ margin: '0 0 0.25rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current Profile</p>
+                            <p style={{ margin: '0 0 0.25rem', fontFamily: 'Lora, serif', fontSize: '1rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                                {currentCategoryName}
+                            </p>
+                            <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-muted)' }}>
+                                ${myProfile.price}/hr · {myProfile.totalReviews} review{myProfile.totalReviews !== 1 ? 's' : ''}
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            <Star size={16} fill="#F59E0B" style={{ color: '#F59E0B' }} />
+                            <span style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700, fontSize: '1rem', color: '#F59E0B' }}>
+                                {myProfile.rating > 0 ? myProfile.rating.toFixed(1) : 'No ratings yet'}
+                            </span>
+                        </div>
+                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: 999, background: myProfile.isAvailable ? '#22c55e15' : 'var(--color-border)', border: `1px solid ${myProfile.isAvailable ? '#22c55e30' : 'transparent'}`, fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', fontWeight: 600, color: myProfile.isAvailable ? '#22c55e' : 'var(--color-muted)' }}>
+                            {myProfile.isAvailable ? '● Available' : '○ Unavailable'}
+                        </span>
+                    </motion.div>
+                )}
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Price per Hour ($) *</label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    placeholder="Enter hourly rate"
-                    step="0.01"
-                    min="0"
-                    className={`w-full px-4 py-2 rounded-lg border ${
-                      theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                    } text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition`}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Latitude *</label>
-                    <input
-                      type="number"
-                      name="latitude"
-                      value={formData.latitude}
-                      onChange={handleChange}
-                      placeholder="-90 to 90"
-                      step="0.0001"
-                      className={`w-full px-4 py-2 rounded-lg border ${
-                        theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                      } text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition`}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Longitude *</label>
-                    <input
-                      type="number"
-                      name="longitude"
-                      value={formData.longitude}
-                      onChange={handleChange}
-                      placeholder="-180 to 180"
-                      step="0.0001"
-                      className={`w-full px-4 py-2 rounded-lg border ${
-                        theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                      } text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition`}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-4 rounded-lg border border-border/30">
-                  <input
-                    type="checkbox"
-                    id="availability"
-                    name="isAvailable"
-                    checked={formData.isAvailable}
-                    onChange={handleChange}
-                    className="w-5 h-5 rounded text-primary focus:ring-2 focus:ring-primary/30 cursor-pointer"
-                  />
-                  <label htmlFor="availability" className="flex-1 cursor-pointer">
-                    <p className="font-medium text-foreground">Available for Bookings</p>
-                    <p className="text-sm text-foreground/60">Toggle to show/hide your profile from customers</p>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 px-4 bg-linear-to-r from-primary to-accent text-white font-medium rounded-lg hover:shadow-lg hover:shadow-primary/30 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                {/* ── Form ────────────────────────────────────────────────────────── */}
+                <motion.form
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onSubmit={handleSubmit}
+                    style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.375rem', boxShadow: 'var(--shadow-md)' }}
+                    noValidate
                 >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>Save Changes</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+                    {/* Server error */}
+                    <AnimatePresence>
+                        {(serverError ?? profileError) && (
+                            <motion.div key="error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                                style={{ overflow: 'hidden', display: 'flex', alignItems: 'flex-start', gap: '0.625rem', padding: '0.875rem 1rem', background: 'rgba(249,111,112,0.07)', border: '1px solid rgba(249,111,112,0.25)', borderRadius: 'var(--radius-md)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-error)' }}>
+                                <AlertCircle size={17} style={{ flexShrink: 0, marginTop: 1 }} />
+                                {serverError ?? profileError}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Category — CREATE only */}
+                    {!isEditMode && (
+                        <Field id="profile-category" label="Service Category" hint="Cannot be changed after creation.">
+                            <select id="profile-category" value={categoryId} onChange={e => setCategoryId(e.target.value)} required
+                                style={{ ...INPUT_STYLE, cursor: 'pointer' }}>
+                                <option value="">Select a category…</option>
+                                {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                            </select>
+                        </Field>
+                    )}
+
+                    {/* Bio */}
+                    <Field id="profile-bio" label="Professional Bio" hint="Describe your experience, skills, and what makes you stand out (min 20 characters).">
+                        <textarea id="profile-bio" value={bio} onChange={e => setBio(e.target.value)} required rows={4} aria-required="true"
+                            placeholder="e.g. I'm a licensed electrician with 8+ years of experience in residential wiring…"
+                            style={{ ...INPUT_STYLE, resize: 'vertical', minHeight: 100 }} />
+                    </Field>
+
+                    {/* Price */}
+                    <Field id="profile-price" label="Hourly Rate (USD)" hint="Customers see this rate on your profile card.">
+                        <div style={{ position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-muted)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', pointerEvents: 'none' }}>$</span>
+                            <input id="profile-price" type="number" min={1} max={9999} step={1} value={price} onChange={e => setPrice(e.target.value)} required
+                                placeholder="50" aria-required="true" style={{ ...INPUT_STYLE, paddingLeft: '1.75rem' }} />
+                        </div>
+                    </Field>
+
+                    {/* Location — CREATE only */}
+                    {!isEditMode && (
+                        <Field label="Your Location" hint="Used to show distance to customers. Cannot be changed after creation.">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                                <motion.button type="button" onClick={getLocation} disabled={geoLoading}
+                                    whileHover={geoLoading ? {} : { scale: 1.02 }} whileTap={geoLoading ? {} : { scale: 0.97 }}
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.625rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-primary)', background: 'var(--color-primary)10', color: 'var(--color-primary)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', fontWeight: 500, cursor: geoLoading ? 'wait' : 'pointer' }}
+                                    aria-label="Detect my location automatically">
+                                    {geoLoading ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Detecting…</> : <><LocateFixed size={14} /> Use My Location</>}
+                                </motion.button>
+                                {geoError && <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-error)' }}>{geoError}</p>}
+                                <div style={{ display: 'flex', gap: '0.625rem' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="profile-lat" style={{ display: 'block', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '0.3rem' }}>Latitude</label>
+                                        <input id="profile-lat" type="number" step="any" value={manualLat} onChange={e => setManualLat(e.target.value)} placeholder="e.g. 40.7128" style={INPUT_STYLE} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="profile-lng" style={{ display: 'block', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-muted)', marginBottom: '0.3rem' }}>Longitude</label>
+                                        <input id="profile-lng" type="number" step="any" value={manualLng} onChange={e => setManualLng(e.target.value)} placeholder="e.g. -74.0060" style={INPUT_STYLE} />
+                                    </div>
+                                </div>
+                                {location && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: '#22c55e' }}>
+                                        <CheckCircle2 size={13} /> Location detected automatically
+                                    </div>
+                                )}
+                            </div>
+                        </Field>
+                    )}
+
+                    {/* Submit */}
+                    <motion.button
+                        type="submit"
+                        disabled={profileLoading}
+                        whileHover={profileLoading ? {} : { scale: 1.02 }}
+                        whileTap={profileLoading ? {} : { scale: 0.97 }}
+                        className="btn-primary"
+                        style={{ fontSize: '0.9375rem', padding: '0.75rem', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: profileLoading ? 0.7 : 1, cursor: profileLoading ? 'wait' : 'pointer' }}
+                        aria-busy={profileLoading}
+                    >
+                        {profileLoading && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+                        {profileLoading
+                            ? (isEditMode ? 'Saving…' : 'Creating…')
+                            : (isEditMode ? 'Save Changes' : 'Create Profile')
+                        }
+                    </motion.button>
+                </motion.form>
+
+            </div>
+        </main>
+    )
 }

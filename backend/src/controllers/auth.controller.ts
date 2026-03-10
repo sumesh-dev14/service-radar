@@ -70,6 +70,7 @@ export const register = async (
         email: user.email,
         role: user.role,
       },
+      token,
     });
   } catch (error) {
     console.error("Register error:", error);
@@ -122,6 +123,7 @@ export const login = async (
         email: user.email,
         role: user.role,
       },
+      token,
     });
   } catch (error) {
     console.error("Login error:", error);

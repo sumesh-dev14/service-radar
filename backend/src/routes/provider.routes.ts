@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getMyProfile,
   createProfile,
   updateProfile,
   toggleAvailability,
@@ -10,6 +11,18 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { requireRole } from "../middleware/role.middleware";
 
 const providerRouter = Router();
+
+/**
+ * GET /profile
+ * Get logged-in provider's profile
+ * Requires: Auth + Provider role
+ */
+providerRouter.get(
+  "/profile",
+  authMiddleware,
+  requireRole("provider"),
+  getMyProfile
+);
 
 /**
  * POST /profile

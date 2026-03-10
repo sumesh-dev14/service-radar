@@ -1,90 +1,86 @@
-import { useTheme } from '../../providers/ThemeProvider';
-import { X } from 'lucide-react';
-import { useState } from 'react';
+/**
+ * SplitLayout — Service Radar
+ * Ref: §Component Architecture (Layout/), §Navigation & Routes
+ *
+ * Two-panel layout: sticky sidebar on left + scrollable main content.
+ * Used by SearchProviders page (Phase 14) for filter sidebar + results.
+ *
+ * Props:
+ *   sidebar        — sidebar content (filters, navigation)
+ *   children       — main content area
+ *   sidebarWidth   — width of sidebar (default '280px')
+ *   showSidebar    — toggle visibility on mobile (controlled externally)
+ *   sidebarTitle   — accessible label for sidebar region
+ */
+
+import { type ReactNode } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface SplitLayoutProps {
-  left: React.ReactNode;
-  right: React.ReactNode;
-  title?: string;
-  onClose?: () => void;
+    sidebar: ReactNode
+    children: ReactNode
+    sidebarWidth?: string
+    showSidebar?: boolean
+    sidebarTitle?: string
 }
 
-export default function SplitLayout({
-  left,
-  right,
-  title,
-  onClose,
+export function SplitLayout({
+    sidebar,
+    children,
+    sidebarWidth = '280px',
+    showSidebar = true,
+    sidebarTitle = 'Filters',
 }: SplitLayoutProps) {
-  const { theme } = useTheme();
-  const [isMobileRightOpen, setIsMobileRightOpen] = useState(false);
-
-  const handleClose = () => {
-    setIsMobileRightOpen(false);
-    onClose?.(); // ✅ safely call if provided
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
-      
-      {/* Left side */}
-      <div className="overflow-y-auto">
-        {left}
-      </div>
-
-      {/* Right side - Desktop */}
-      <div className="hidden lg:block overflow-y-auto">
-        {right}
-      </div>
-
-      {/* Right side - Mobile */}
-      <div className="lg:hidden">
-        <button
-          onClick={() => setIsMobileRightOpen(true)}
-          className="w-full py-2 px-4 bg-linear-to-r from-primary to-accent text-white rounded-lg font-medium hover:shadow-lg transition-all"
+    return (
+        <div
+            style={{
+                display: 'flex',
+                minHeight: 'calc(100vh - 64px)', // 64px = navbar height
+                position: 'relative',
+            }}
         >
-          {title || 'View Details'}
-        </button>
+            {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+            <AnimatePresence initial={false}>
+                {showSidebar && (
+                    <motion.aside
+                        key="sidebar"
+                        initial={{ width: 0, opacity: 0 }}
+                        animate={{ width: sidebarWidth, opacity: 1 }}
+                        exit={{ width: 0, opacity: 0 }}
+                        transition={{ type: 'spring', stiffness: 360, damping: 40 }}
+                        style={{ overflow: 'hidden', flexShrink: 0 }}
+                        aria-label={sidebarTitle}
+                    >
+                        <div
+                            style={{
+                                width: sidebarWidth,
+                                height: '100%',
+                                padding: '1.5rem 1rem 1.5rem 1.5rem',
+                                background: 'var(--color-card)',
+                                borderRight: '1px solid var(--color-border)',
+                                overflowY: 'auto',
+                                position: 'sticky',
+                                top: 64,
+                                maxHeight: 'calc(100vh - 64px)',
+                            }}
+                        >
+                            {sidebar}
+                        </div>
+                    </motion.aside>
+                )}
+            </AnimatePresence>
 
-        {/* Mobile Modal */}
-        {isMobileRightOpen && (
-          <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-            
-            {/* Slide panel */}
-            <div
-              className={`fixed inset-y-0 right-0 w-full max-w-sm ${
-                theme === 'dark'
-                  ? 'bg-card'
-                  : 'bg-card shadow-lg'
-              } overflow-y-auto`}
+            {/* ── Main content ─────────────────────────────────────────────────── */}
+            <main
+                style={{
+                    flex: 1,
+                    padding: '1.5rem',
+                    minWidth: 0, // prevent flex overflow
+                    overflow: 'hidden',
+                }}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border/30">
-                <h2 className="font-semibold text-foreground">
-                  {title || 'Details'}
-                </h2>
-
-                <button
-                  onClick={handleClose}
-                  className="p-1 hover:bg-foreground/5 rounded transition-colors"
-                >
-                  <X className="w-5 h-5 text-foreground" />
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="p-4">
-                {right}
-              </div>
-            </div>
-
-            {/* Click outside to close */}
-            <div
-              className="absolute inset-0 -z-10"
-              onClick={handleClose}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+                {children}
+            </main>
+        </div>
+    )
 }

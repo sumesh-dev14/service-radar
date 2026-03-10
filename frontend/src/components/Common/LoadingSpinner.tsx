@@ -1,36 +1,72 @@
-import { useTheme } from '../../providers/ThemeProvider';
+/**
+ * LoadingSpinner — Service Radar
+ * Ref: §Component Architecture (Common/)
+ *
+ * Centered full-page spinner for route-level loading states.
+ * Uses design system primary color via CSS variable.
+ *
+ * Variants:
+ *   full   — fills 100vh (default, for page-level)
+ *   inline — fits content area (for section-level)
+ *   sm     — small 20px (for buttons)
+ */
 
 interface LoadingSpinnerProps {
-  size?: 'sm' | 'md' | 'lg';
-  fullScreen?: boolean;
-  message?: string;
+    variant?: 'full' | 'inline' | 'sm'
+    label?: string
 }
 
-export default function LoadingSpinner({ size = 'md', fullScreen = false, message }: LoadingSpinnerProps) {
-  const { theme } = useTheme();
+export function LoadingSpinner({
+    variant = 'full',
+    label = 'Loading…',
+}: LoadingSpinnerProps) {
+    const sizes = { full: 40, inline: 32, sm: 18 }
+    const size = sizes[variant]
 
-  const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-8 h-8',
-    lg: 'w-12 h-12',
-  };
+    const wrapperStyle: React.CSSProperties =
+        variant === 'full'
+            ? {
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100vh',
+                gap: '1rem',
+                background: 'var(--color-bg)',
+            }
+            : {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '2rem',
+                gap: '0.75rem',
+            }
 
-  const spinner = (
-    <div className="flex flex-col items-center gap-3">
-      <div className={`${sizeClasses[size]} border-3 border-primary/20 border-t-primary rounded-full animate-spin`} />
-      {message && <p className="text-foreground/60 text-sm">{message}</p>}
-    </div>
-  );
-
-  if (fullScreen) {
     return (
-      <div className={`fixed inset-0 flex items-center justify-center z-50 ${
-        theme === 'dark' ? 'bg-background/80' : 'bg-background/80'
-      } backdrop-blur-sm`}>
-        {spinner}
-      </div>
-    );
-  }
-
-  return spinner;
+        <div style={wrapperStyle} role="status" aria-label={label}>
+            <div
+                style={{
+                    width: size,
+                    height: size,
+                    borderRadius: '50%',
+                    border: `3px solid var(--color-border)`,
+                    borderTopColor: 'var(--color-primary)',
+                    animation: 'spin 0.7s linear infinite',
+                    flexShrink: 0,
+                }}
+            />
+            {variant === 'full' && (
+                <p
+                    style={{
+                        color: 'var(--color-muted)',
+                        fontSize: '0.875rem',
+                        fontFamily: 'Poppins, sans-serif',
+                    }}
+                >
+                    {label}
+                </p>
+            )}
+            <span className="sr-only">{label}</span>
+        </div>
+    )
 }

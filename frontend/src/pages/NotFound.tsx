@@ -1,71 +1,140 @@
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import { useTheme } from '../providers/ThemeProvider';
-import { AlertCircle, Home, ArrowLeft } from 'lucide-react';
+/**
+ * NotFound — 404 Page — Service Radar
+ * Ref: §Navigation & Routes, Phase 13
+ *
+ * Shown for any unmatched route.
+ * Features:
+ *   - Animated 404 number with glitch pulse
+ *   - Helpful links: Home, Search, Login
+ *   - Framer Motion entrance
+ */
+
+import { Link, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { Home, Search, ArrowLeft } from 'lucide-react'
 
 export default function NotFound() {
-  const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const { theme } = useTheme();
+    const navigate = useNavigate()
 
-  return (
-    <div className={`min-h-screen flex items-center justify-center px-4 ${
-      theme === 'dark' ? 'bg-background' : 'bg-background'
-    }`}>
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl"></div>
-      </div>
+    return (
+        <main
+            style={{
+                minHeight: '100vh',
+                background: 'var(--color-bg)',
+                color: 'var(--color-fg)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '2rem 1.5rem',
+                textAlign: 'center',
+                position: 'relative',
+                overflow: 'hidden',
+            }}
+        >
+            {/* Background blobs */}
+            <div aria-hidden="true" style={{ position: 'absolute', top: '15%', left: '10%', width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, var(--color-primary)15 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div aria-hidden="true" style={{ position: 'absolute', bottom: '10%', right: '8%', width: 240, height: 240, borderRadius: '50%', background: 'radial-gradient(circle, var(--color-secondary)12 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-      {/* Main container */}
-      <div className="relative text-center max-w-md">
-        {/* Error icon */}
-        <div className="mb-6 flex justify-center">
-          <div className="relative">
-            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
-              <AlertCircle className="w-10 h-10 text-red-600 dark:text-red-400" />
-            </div>
-          </div>
-        </div>
+            {/* 404 numeral */}
+            <motion.div
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+            >
+                <motion.h1
+                    animate={{ opacity: [1, 0.85, 1] }}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                        margin: '0 0 0.25rem',
+                        fontFamily: 'Lora, serif',
+                        fontWeight: 700,
+                        fontSize: 'clamp(6rem, 18vw, 10rem)',
+                        lineHeight: 1,
+                        background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                    }}
+                    aria-label="Error 404"
+                >
+                    404
+                </motion.h1>
+            </motion.div>
 
-        {/* Error code */}
-        <h1 className="text-6xl font-bold text-primary mb-2">404</h1>
+            {/* Text */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}
+            >
+                <h2 style={{ margin: 0, fontFamily: 'Lora, serif', fontSize: '1.5rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                    Page not found
+                </h2>
+                <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.9375rem', color: 'var(--color-muted)', maxWidth: 360, lineHeight: 1.65 }}>
+                    The page you're looking for doesn't exist or may have been moved. Here are some helpful links:
+                </p>
+            </motion.div>
 
-        {/* Error message */}
-        <h2 className="text-2xl font-semibold text-foreground mb-3">Page Not Found</h2>
-        <p className="text-foreground/60 mb-8">
-          Sorry, the page you're looking for doesn't exist. It might have been moved or deleted.
-        </p>
+            {/* Action buttons */}
+            <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap', justifyContent: 'center' }}
+            >
+                <motion.button
+                    onClick={() => navigate(-1)}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        padding: '0.625rem 1.25rem',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        background: 'transparent',
+                        color: 'var(--color-fg)',
+                        fontFamily: 'Poppins, sans-serif',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                        cursor: 'pointer',
+                    }}
+                    aria-label="Go back"
+                >
+                    <ArrowLeft size={15} /> Go Back
+                </motion.button>
 
-        {/* Action buttons */}
-        <div className="flex gap-3 flex-col sm:flex-row">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex-1 py-2.5 px-4 border border-border rounded-lg font-medium text-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Go Back
-          </button>
-          <button
-            onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
-            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-primary to-accent text-white font-medium rounded-lg hover:shadow-lg hover:shadow-primary/30 transition-all flex items-center justify-center gap-2"
-          >
-            <Home className="w-4 h-4" />
-            {isAuthenticated ? 'Dashboard' : 'Login'}
-          </button>
-        </div>
+                <Link
+                    to="/"
+                    className="btn-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem' }}
+                >
+                    <Home size={15} /> Home
+                </Link>
 
-        {/* Decorative element */}
-        <div className="mt-12 pt-8 border-t border-border">
-          <p className="text-sm text-foreground/50">
-            Need help?{' '}
-            <a href="mailto:support@serviceradar.com" className="text-primary hover:underline">
-              Contact Support
-            </a>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+                <Link
+                    to="/search"
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        padding: '0.625rem 1.25rem',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        background: 'transparent',
+                        color: 'var(--color-fg)',
+                        fontFamily: 'Poppins, sans-serif',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                        textDecoration: 'none',
+                    }}
+                >
+                    <Search size={15} /> Search Providers
+                </Link>
+            </motion.div>
+        </main>
+    )
 }

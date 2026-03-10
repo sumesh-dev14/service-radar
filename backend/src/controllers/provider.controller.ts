@@ -10,6 +10,29 @@ import {
 import { AuthRequest } from "../types";
 import { sendSuccess, sendError } from "../utils/responseHandler";
 
+export const getMyProfile = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendError(res, 401, "Unauthorized");
+      return;
+    }
+
+    const profile = await ProviderProfile.findOne({ userId: req.user._id }).populate('categoryId');
+    if (!profile) {
+      sendError(res, 404, "Profile not found");
+      return;
+    }
+
+    sendSuccess(res, 200, "Profile retrieved successfully", { profile });
+  } catch (error) {
+    console.error("Get my profile error:", error);
+    sendError(res, 500, "Failed to retrieve profile");
+  }
+};
+
 export const createProfile = async (
   req: AuthRequest,
   res: Response
@@ -65,10 +88,13 @@ export const createProfile = async (
       isAvailable: true,
     });
 
+    // Populate categoryId before returning
+    await profile.populate('categoryId');
+
     // Add to ranking engine
     rankingEngine.upsert(categoryId, profile._id.toString(), 0, price, 0);
 
-    sendSuccess(res, 201, "Profile created successfully", profile);
+    sendSuccess(res, 201, "Profile created successfully", { profile });
   } catch (error) {
     console.error("Create profile error:", error);
     sendError(res, 500, "Failed to create profile");
@@ -101,6 +127,9 @@ export const updateProfile = async (
 
     await profile.save();
 
+    // Populate categoryId before returning
+    await profile.populate('categoryId');
+
     // Recalculate score in ranking engine
     const categoryId = profile.categoryId.toString();
     const newScore = computeScore(profile.rating, profile.price, 0);
@@ -112,7 +141,7 @@ export const updateProfile = async (
       0
     );
 
-    sendSuccess(res, 200, "Profile updated successfully", profile);
+    sendSuccess(res, 200, "Profile updated successfully", { profile });
   } catch (error) {
     console.error("Update profile error:", error);
     sendError(res, 500, "Failed to update profile");
@@ -158,7 +187,6 @@ export const toggleAvailability = async (
 
     sendSuccess(res, 200, `Provider ${profile.isAvailable ? "is now" : "is no longer"} available`, {
       isAvailable: profile.isAvailable,
-      profile,
     });
   } catch (error) {
     console.error("Toggle availability error:", error);

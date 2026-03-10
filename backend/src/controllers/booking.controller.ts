@@ -397,3 +397,88 @@ export const completeBooking = async (
     sendError(res, 500, "Failed to complete booking");
   }
 };
+
+
+/* Update Booking Status (Generic) */
+
+
+export const updateBookingStatus = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendError(res, 401, "Unauthorized");
+      return;
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!isValidObjectId(id)) {
+      sendError(res, 400, "Invalid booking ID");
+      return;
+    }
+
+    if (!status || !["pending", "accepted", "cancelled", "completed"].includes(status)) {
+      sendError(res, 400, "Invalid status");
+      return;
+    }
+
+    const booking = await Booking.findById(id).populate({
+      path: "providerId",
+      populate: { path: "userId", select: "_id" }
+    });
+
+    if (!booking) {
+      sendError(res, 404, "Booking not found");
+      return;
+    }
+
+    // Check authorization: provider can accept/complete/cancel, customer can only cancel
+    const providerProfile = booking.providerId as any;
+    const isProvider = providerProfile?.userId?._id?.toString() === req.user._id.toString();
+    const isCustomer = booking.customerId.toString() === req.user._id.toString();
+
+    if (!isProvider && !isCustomer) {
+      sendError(res, 403, "Forbidden: You are not a participant in this booking");
+      return;
+    }
+
+    // Validate status transitions
+    const currentStatus = booking.status;
+
+    if (status === "accepted") {
+      if (!isProvider) {
+        sendError(res, 403, "Only provider can accept booking");
+        return;
+      }
+      if (currentStatus !== "pending") {
+        sendError(res, 400, `Cannot accept booking with status: ${currentStatus}`);
+        return;
+      }
+    } else if (status === "completed") {
+      if (!isProvider) {
+        sendError(res, 403, "Only provider can complete booking");
+        return;
+      }
+      if (currentStatus !== "accepted") {
+        sendError(res, 400, `Cannot complete booking with status: ${currentStatus}`);
+        return;
+      }
+    } else if (status === "cancelled") {
+      if (currentStatus !== "pending" && currentStatus !== "accepted") {
+        sendError(res, 400, `Cannot cancel booking with status: ${currentStatus}`);
+        return;
+      }
+    }
+
+    booking.status = status;
+    await booking.save();
+
+    sendSuccess(res, 200, `Booking ${status} successfully`, { booking });
+  } catch (error) {
+    console.error("Update booking status error:", error);
+    sendError(res, 500, "Failed to update booking status");
+  }
+};

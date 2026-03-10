@@ -1,132 +1,279 @@
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { useTheme } from '../../providers/ThemeProvider';
-import { MapPin, Filter, ArrowLeft, AlertCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useProviderStore } from '../../store/providerStore';
-import ProviderList from '../../components/Provider/ProviderList';
-import LoadingSpinner from '../../components/Common/LoadingSpinner';
+/**
+ * SearchProviders — Service Radar
+ * Ref: §Navigation & Routes (/search), §Provider Endpoints, §Provider Discovery
+ * Phase 14
+ *
+ * Real implementation:
+ *   - Reads `?category=` from URL on mount to pre-fill filter (set by Home category tiles)
+ *   - Filter sidebar: category dropdown, max price slider, min rating slider
+ *   - Geolocation button → uses useGeolocation hook → sends lat/lng to API
+ *   - Debounced (500ms) filter change → GET /api/providers?category=&lat=&lng=
+ *   - Results rendered in ProviderList (skeletons while loading)
+ *   - URL query params kept in sync with active filters
+ */
+
+import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { MapPin, Loader2, X, SlidersHorizontal, LocateFixed } from 'lucide-react'
+import { useProviderStore } from '@/store/providerStore'
+import { ProviderList } from '@/components/Provider'
+import { getCategories } from '@/services/categoryService'
+import { useDebounce } from '@/hooks/useDebounce'
+import { useGeolocation } from '@/hooks/useGeolocation'
+import type { Category } from '@/types/models'
+
+// ── Filter sidebar ────────────────────────────────────────────────────────────
+
+interface FilterState {
+    category: string      // categoryId or ''
+    maxPrice: number      // 0 = no limit
+    minRating: number     // 0 = no filter
+}
+
+const DEFAULT_FILTERS: FilterState = { category: '', maxPrice: 0, minRating: 0 }
 
 export default function SearchProviders() {
-  const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const { theme } = useTheme();
-  const { providers, categories, isLoading, error, fetchProviders, fetchCategories } = useProviderStore();
-  
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [latitude, setLatitude] = useState<number | undefined>();
-  const [longitude, setLongitude] = useState<number | undefined>();
+    const [searchParams, setSearchParams] = useSearchParams()
+    const { providers, isLoading, applyFilters, resetFilters } = useProviderStore()
+    const { location, isLoading: geoLoading, error: geoError, getLocation, clearLocation } = useGeolocation()
 
-  if (!isAuthenticated) {
-    navigate('/login');
-    return null;
-  }
+    const [categories, setCategories] = useState<Category[]>([])
+    const [filters, setFilters] = useState<FilterState>({
+        ...DEFAULT_FILTERS,
+        category: searchParams.get('category') ?? '',
+    })
+    const [sidebarOpen, setSidebarOpen] = useState(true)
 
-  // Fetch categories on mount
-  useEffect(() => {
-    fetchCategories();
-  }, []);
+    const debouncedFilters = useDebounce(filters, 500)
 
-  // Get user location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLatitude(position.coords.latitude);
-          setLongitude(position.coords.longitude);
-        },
-        () => {
-          // Silent fail - location not required
-        }
-      );
+    // Load categories once
+    useEffect(() => {
+        getCategories().then(setCategories).catch(() => { })
+    }, [])
+
+    // Sync filters → URL params
+    useEffect(() => {
+        const params: Record<string, string> = {}
+        if (debouncedFilters.category) params.category = debouncedFilters.category
+        if (debouncedFilters.maxPrice > 0) params.maxPrice = String(debouncedFilters.maxPrice)
+        if (debouncedFilters.minRating > 0) params.minRating = String(debouncedFilters.minRating)
+        setSearchParams(params, { replace: true })
+    }, [debouncedFilters, setSearchParams])
+
+    // Trigger API call when debounced filters or location changes
+    useEffect(() => {
+        const apiFilters: Parameters<typeof applyFilters>[0] = { limit: 20 }
+        if (debouncedFilters.category) apiFilters.category = debouncedFilters.category
+        if (location) { apiFilters.lat = location.lat; apiFilters.lng = location.lng }
+        applyFilters(apiFilters)
+    }, [debouncedFilters, location, applyFilters])
+
+    const setFilter = useCallback(<K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+        setFilters(prev => ({ ...prev, [key]: value }))
+    }, [])
+
+    const handleReset = () => {
+        setFilters(DEFAULT_FILTERS)
+        clearLocation()
+        resetFilters()
     }
-  }, []);
 
-  // Fetch providers when category changes or location updates
-  useEffect(() => {
-    if (selectedCategory) {
-      fetchProviders(selectedCategory, latitude, longitude);
-    }
-  }, [selectedCategory, latitude, longitude]);
+    const hasActiveFilters = filters.category !== '' || filters.maxPrice > 0 || filters.minRating > 0 || !!location
 
-  return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-background' : 'bg-background'}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-primary hover:text-primary/80 mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </button>
+    const selectedCategoryName = categories.find(c => c._id === filters.category)?.name ?? 'All Categories'
 
-        <h1 className="text-3xl font-bold text-foreground mb-8">Search Providers</h1>
+    return (
+        <main style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-fg)', paddingTop: '1rem' }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1.5rem' }}>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Filters sidebar */}
-          <div className={`rounded-xl p-6 h-fit ${
-            theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-          }`}>
-            <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Filter className="w-5 h-5" />
-              Filters
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground/70 mb-2">
-                  Category
-                </label>
-                <select 
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    theme === 'dark' ? 'bg-background/50 border-border/50' : 'bg-background border-border'
-                  } text-foreground text-sm`}>
-                  <option value="">Select a category...</option>
-                  {categories.map((cat) => (
-                    <option key={cat._id} value={cat._id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {latitude && longitude && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                  📍 Location detected: {latitude.toFixed(4)}, {longitude.toFixed(4)}
+                {/* ── Page header ───────────────────────────────────────────────── */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                        <h1 style={{ margin: 0, fontFamily: 'Lora, serif', fontSize: '1.75rem', color: 'var(--color-fg)' }}>
+                            Find Providers
+                        </h1>
+                        <p style={{ margin: '0.25rem 0 0', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-muted)' }}>
+                            {isLoading ? 'Searching…' : `${providers.length} provider${providers.length !== 1 ? 's' : ''} found`}
+                            {location && <span style={{ color: 'var(--color-primary)', marginLeft: '0.5rem' }}>· Near you</span>}
+                            {filters.category && <span style={{ color: 'var(--color-primary)', marginLeft: '0.5rem' }}>· {selectedCategoryName}</span>}
+                        </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
+                        {hasActiveFilters && (
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                onClick={handleReset}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.425rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'none', color: 'var(--color-muted)', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', cursor: 'pointer' }}
+                            >
+                                <X size={13} /> Clear filters
+                            </motion.button>
+                        )}
+                        <button
+                            onClick={() => setSidebarOpen(s => !s)}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: sidebarOpen ? 'var(--color-primary)15' : 'none', color: sidebarOpen ? 'var(--color-primary)' : 'var(--color-fg)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}
+                            aria-label="Toggle filter sidebar"
+                        >
+                            <SlidersHorizontal size={15} /> Filters
+                        </button>
+                    </div>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Main content */}
-          <div className="lg:col-span-3">
-            {error && (
-              <div className="mb-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-              </div>
-            )}
-            {isLoading && !selectedCategory && (
-              <div className={`rounded-xl p-8 border-2 border-dashed border-border/30 text-center ${
-                theme === 'dark' ? 'bg-background/30' : 'bg-background/50'
-              }`}>
-                <MapPin className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">Select a category</h3>
-                <p className="text-foreground/60">
-                  Choose a service category from filters to see available providers
-                </p>
-              </div>
-            )}
-            {isLoading && selectedCategory && <LoadingSpinner />}
-            {!isLoading && selectedCategory && (
-              <ProviderList 
-                providers={providers}
-                isEmpty={providers.length === 0}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+                {/* ── Layout: Sidebar + Results ──────────────────────────────────── */}
+                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+
+                    {/* Sidebar */}
+                    <AnimatePresence initial={false}>
+                        {sidebarOpen && (
+                            <motion.aside
+                                key="sidebar"
+                                initial={{ opacity: 0, width: 0, x: -20 }}
+                                animate={{ opacity: 1, width: 260, x: 0 }}
+                                exit={{ opacity: 0, width: 0, x: -20 }}
+                                transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+                                style={{ flexShrink: 0, overflow: 'hidden' }}
+                                aria-label="Provider search filters"
+                            >
+                                <div style={{ width: 260, background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                                    {/* Category */}
+                                    <div>
+                                        <label htmlFor="filter-category" style={{ display: 'block', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)', marginBottom: '0.5rem' }}>
+                                            Category
+                                        </label>
+                                        <select
+                                            id="filter-category"
+                                            value={filters.category}
+                                            onChange={e => setFilter('category', e.target.value)}
+                                            style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-fg)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', outline: 'none', cursor: 'pointer' }}
+                                        >
+                                            <option value="">All Categories</option>
+                                            {categories.map(c => (
+                                                <option key={c._id} value={c._id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Max price */}
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <label htmlFor="filter-price" style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                                                Max Hourly Rate
+                                            </label>
+                                            <span style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                                                {filters.maxPrice === 0 ? 'Any' : `$${filters.maxPrice}/hr`}
+                                            </span>
+                                        </div>
+                                        <input
+                                            id="filter-price"
+                                            type="range"
+                                            min={0}
+                                            max={300}
+                                            step={10}
+                                            value={filters.maxPrice}
+                                            onChange={e => setFilter('maxPrice', Number(e.target.value))}
+                                            style={{ width: '100%', accentColor: 'var(--color-primary)' }}
+                                            aria-label={`Max rate: ${filters.maxPrice === 0 ? 'Any' : `$${filters.maxPrice}/hr`}`}
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', marginTop: '0.2rem' }}>
+                                            <span>Any</span><span>$300/hr</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Min rating */}
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <label htmlFor="filter-rating" style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                                                Min Rating
+                                            </label>
+                                            <span style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                                                {filters.minRating === 0 ? 'Any' : `${filters.minRating}★+`}
+                                            </span>
+                                        </div>
+                                        <input
+                                            id="filter-rating"
+                                            type="range"
+                                            min={0}
+                                            max={5}
+                                            step={0.5}
+                                            value={filters.minRating}
+                                            onChange={e => setFilter('minRating', Number(e.target.value))}
+                                            style={{ width: '100%', accentColor: 'var(--color-primary)' }}
+                                            aria-label={`Min rating: ${filters.minRating === 0 ? 'Any' : `${filters.minRating} stars and above`}`}
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', marginTop: '0.2rem' }}>
+                                            <span>Any</span><span>5★</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Geolocation */}
+                                    <div>
+                                        <p style={{ margin: '0 0 0.5rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)' }}>
+                                            Location
+                                        </p>
+                                        {location ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem', background: 'var(--color-primary)12', border: '1px solid var(--color-primary)25', borderRadius: 'var(--radius-md)' }}>
+                                                    <MapPin size={13} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                                                    <span style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 500 }}>
+                                                        Location active
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={clearLocation}
+                                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', padding: '0.4rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'none', color: 'var(--color-muted)', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', cursor: 'pointer' }}
+                                                >
+                                                    <X size={12} /> Clear location
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <motion.button
+                                                    onClick={getLocation}
+                                                    disabled={geoLoading}
+                                                    whileHover={geoLoading ? {} : { scale: 1.02 }}
+                                                    whileTap={geoLoading ? {} : { scale: 0.97 }}
+                                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-primary)', background: 'var(--color-primary)10', color: 'var(--color-primary)', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 500, cursor: geoLoading ? 'wait' : 'pointer' }}
+                                                    aria-label="Use my current location"
+                                                >
+                                                    {geoLoading
+                                                        ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Locating…</>
+                                                        : <><LocateFixed size={13} /> Use My Location</>
+                                                    }
+                                                </motion.button>
+                                                {geoError && (
+                                                    <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-error)', lineHeight: 1.4 }}>
+                                                        {geoError}
+                                                    </p>
+                                                )}
+                                                <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', lineHeight: 1.45 }}>
+                                                    Sort results by distance from you
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </motion.aside>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Results */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <ProviderList
+                            providers={providers}
+                            isLoading={isLoading}
+                            skeletonCount={6}
+                            emptyMessage={
+                                hasActiveFilters
+                                    ? 'No providers match these filters. Try adjusting your search criteria.'
+                                    : 'No providers have registered yet.'
+                            }
+                        />
+                    </div>
+                </div>
+            </div>
+        </main>
+    )
 }

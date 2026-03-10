@@ -1,305 +1,298 @@
-import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { useTheme } from '../../providers/ThemeProvider';
-import { ArrowLeft, Calendar, MapPin, DollarSign, CheckCircle, Clock, MessageSquare, AlertCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useBookingStore } from '../../store/bookingStore';
-import LoadingSpinner from '../../components/Common/LoadingSpinner';
-import ReviewForm from '../../components/Review/ReviewForm';
-import api from '../../services/api';
+/**
+ * BookingDetails — Customer Page — Service Radar
+ * Ref: §Booking Endpoints, §Review Endpoints, §Customer Journey Flow, Phase 15
+ *
+ * Fetches GET /bookings/:id (with cache check in bookingStore).
+ * Actions:
+ *   - Cancel (only for 'pending') → PATCH /bookings/:id/status { cancelled }
+ *   - Leave Review (only for 'completed' + no review yet) → opens ReviewForm inline
+ */
+
+import { useEffect, useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+    ChevronLeft, CalendarClock, DollarSign, User,
+    Tag, AlertTriangle, XCircle, CheckCircle2,
+} from 'lucide-react'
+import { useBookingStore } from '@/store/bookingStore'
+import { BookingStatusBadge } from '@/components/Booking'
+import { ReviewForm } from '@/components/Review'
+import { useToastContext } from '@/components/Common/Toast'
+import type { ProviderProfile, PopulatedUser, PopulatedCategory } from '@/types/models'
+
+// ── Type helpers ──────────────────────────────────────────────────────────────
+
+function isPopulatedUser(v: unknown): v is PopulatedUser {
+    return typeof v === 'object' && v !== null && 'name' in v
+}
+function isPopulatedProvider(v: unknown): v is ProviderProfile {
+    return typeof v === 'object' && v !== null && 'bio' in v
+}
+function isPopulatedCategory(v: unknown): v is PopulatedCategory {
+    return typeof v === 'object' && v !== null && 'name' in v
+}
+
+// ── Detail row ────────────────────────────────────────────────────────────────
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem', padding: '0.875rem 0', borderBottom: '1px solid var(--color-border)' }}>
+            <div style={{ color: 'var(--color-primary)', flexShrink: 0, marginTop: 2 }}>{icon}</div>
+            <div style={{ flex: 1 }}>
+                <p style={{ margin: '0 0 0.1rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', color: 'var(--color-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {label}
+                </p>
+                <div style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.9375rem', color: 'var(--color-fg)' }}>
+                    {value}
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ── BookingDetails ────────────────────────────────────────────────────────────
 
 export default function BookingDetails() {
-  const navigate = useNavigate();
-  const { id } = useParams();
-  const { isAuthenticated } = useAuth();
-  const { theme } = useTheme();
-  const { cancelBooking } = useBookingStore();
+    const { id } = useParams<{ id: string }>()
+    const navigate = useNavigate()
+    const toast = useToastContext()
+    const { currentBooking, isLoading, actionLoading, getBookingDetail, updateBookingStatus } = useBookingStore()
 
-  const [booking, setBooking] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [showReviewForm, setShowReviewForm] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+    const [showReviewForm, setShowReviewForm] = useState(false)
+    const [hasReview, setHasReview] = useState(false)
+    const [cancelConfirm, setCancelConfirm] = useState(false)
 
-  if (!isAuthenticated) {
-    navigate('/login');
-    return null;
-  }
+    useEffect(() => {
+        if (id) getBookingDetail(id)
+    }, [id, getBookingDetail])
 
-  useEffect(() => {
-    const fetchBooking = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const res = await api.get(`/bookings/${id}`);
-        setBooking(res.data.data.booking);
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to load booking');
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Check if review exists for this booking
+    useEffect(() => {
+        const checkReviewExists = async () => {
+            if (!id) return
+            try {
+                // We'll add a simple API call to check if review exists
+                const response = await fetch(`${import.meta.env.VITE_API_URL}/reviews/check/${id}`, {
+                    credentials: 'include'
+                })
+                if (response.ok) {
+                    const data = await response.json()
+                    setHasReview(data.exists)
+                }
+            } catch (error) {
+                console.error('Failed to check review status:', error)
+            }
+        }
 
-    if (id) {
-      fetchBooking();
+        if (currentBooking?.status === 'completed') {
+            checkReviewExists()
+        }
+    }, [id, currentBooking?.status])
+
+    // ── Cancel booking ──────────────────────────────────────────────────────────
+
+    const handleCancel = async () => {
+        if (!id) return
+        try {
+            await updateBookingStatus(id, 'cancelled')
+            toast.success('Booking cancelled successfully.')
+            setCancelConfirm(false)
+        } catch {
+            toast.error('Failed to cancel booking. Please try again.')
+        }
     }
-  }, [id]);
 
-  const handleCancel = async () => {
-    try {
-      setActionLoading(true);
-      setError('');
-      await cancelBooking(id!);
-      const res = await api.get(`/bookings/${id}`);
-      setBooking(res.data.data.booking);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to cancel booking');
-    } finally {
-      setActionLoading(false);
+    // ── Loading ─────────────────────────────────────────────────────────────────
+
+    if (isLoading || !currentBooking) {
+        return (
+            <main style={{ minHeight: '100vh', background: 'var(--color-bg)', padding: '2rem 1.5rem' }}>
+                <div style={{ maxWidth: 700, margin: '0 auto' }}>
+                    <div style={{ height: 20, width: 120, background: 'var(--color-card)', borderRadius: 8, marginBottom: '1.5rem' }} />
+                    {[200, 280, 200].map((h, i) => (
+                        <div key={i} style={{ height: h, background: 'var(--color-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', marginBottom: '1rem', animation: 'shimmer 1.5s ease-in-out infinite' }} />
+                    ))}
+                </div>
+            </main>
+        )
     }
-  };
 
-  const handleReviewSubmit = async (data: any) => {
-    try {
-      setActionLoading(true);
-      setError('');
-      await api.post('/reviews', {
-        bookingId: id,
-        rating: data.rating,
-        comment: data.comment,
-      });
-      setShowReviewForm(false);
-      const res = await api.get(`/bookings/${id}`);
-      setBooking(res.data.data.booking);
-    } catch (err: any) {
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  };
+    const booking = currentBooking
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+    // ── Derived data ──────────────────────────────────────────────────────────
 
-  if (!booking) {
+    const providerProfile = isPopulatedProvider(booking.providerId) ? booking.providerId : null
+    const providerUser = providerProfile && isPopulatedUser(providerProfile.userId) ? providerProfile.userId : null
+    const providerName = providerUser?.name ?? 'Provider'
+    const categoryName = isPopulatedCategory(booking.categoryId) ? booking.categoryId.name : 'Service'
+    const price = providerProfile?.price ?? null
+
+    const scheduledDate = new Date(booking.scheduledDate)
+    const formattedDate = scheduledDate.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const formattedTime = scheduledDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+    const isPending = booking.status === 'pending'
+    const isCompleted = booking.status === 'completed'
+    const isCancelled = booking.status === 'cancelled'
+
     return (
-      <div className={`min-h-screen ${theme === 'dark' ? 'bg-background' : 'bg-background'}`}>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <button
-            onClick={() => navigate('/my-bookings')}
-            className="flex items-center gap-2 text-primary hover:text-primary/80 mb-8"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Bookings
-          </button>
-          <div className={`rounded-xl p-8 border-2 border-dashed border-border/30 text-center ${
-            theme === 'dark' ? 'bg-background/30' : 'bg-background/50'
-          }`}>
-            <AlertCircle className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">Booking not found</h3>
-            <p className="text-foreground/60 mb-6">The booking you're looking for doesn't exist</p>
-            <button
-              onClick={() => navigate('/my-bookings')}
-              className="px-6 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition"
-            >
-              Back to Bookings
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+        <main style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-fg)', padding: '2rem 1.5rem' }}>
+            <div style={{ maxWidth: 700, margin: '0 auto' }}>
 
-  const statusColors: any = {
-    pending: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-300' },
-    accepted: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300' },
-    completed: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-300' },
-    cancelled: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-300' },
-  };
-
-  const colors = statusColors[booking.status] || statusColors.pending;
-
-  return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-background' : 'bg-background'}`}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <button
-          onClick={() => navigate('/my-bookings')}
-          className="flex items-center gap-2 text-primary hover:text-primary/80 mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Bookings
-        </button>
-
-        {error && (
-          <div className="mb-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-            <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-          </div>
-        )}
-
-        {booking ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className={`rounded-xl p-6 ${
-                theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-              }`}>
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h1 className="text-2xl font-bold text-foreground mb-2">Booking #{booking._id?.substring(0, 8)}</h1>
-                    <div className={`flex items-center gap-2 ${colors.text}`}>
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-medium capitalize">{booking.status}</span>
-                    </div>
-                  </div>
-                  <span className={`px-4 py-2 rounded-lg font-medium capitalize ${colors.bg} ${colors.text}`}>
-                    {booking.status}
-                  </span>
+                {/* ── Navigation ───────────────────────────────────────────────────── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.75rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-muted)', flexWrap: 'wrap' }}>
+                    <motion.button onClick={() => navigate('/customer/bookings')} whileHover={{ x: -2 }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', fontFamily: 'inherit', fontSize: 'inherit', padding: 0 }}>
+                        <ChevronLeft size={15} /> My Bookings
+                    </motion.button>
+                    <span style={{ color: 'var(--color-border)' }}>/</span>
+                    <span style={{ color: 'var(--color-fg)', fontWeight: 500 }}>Booking #{booking._id.slice(-6).toUpperCase()}</span>
                 </div>
-              </div>
 
-              <div className={`rounded-xl p-6 ${
-                theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-              }`}>
-                <h2 className="text-lg font-semibold text-foreground mb-4">Details</h2>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-primary mt-1" />
-                    <div>
-                      <p className="text-foreground/60 text-sm">Scheduled Date & Time</p>
-                      <p className="text-foreground font-medium">{new Date(booking.scheduledDate).toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 text-primary mt-1" />
-                    <div>
-                      <p className="text-foreground/60 text-sm">Provider</p>
-                      <p className="text-foreground font-medium">
-                        {typeof booking.providerId === 'string' 
-                          ? booking.providerId 
-                          : booking.providerId?.userId?.name || 'Unknown'}
-                      </p>
-                    </div>
-                  </div>
-                  {typeof booking.providerId === 'object' && booking.providerId?.price && (
-                    <div className="flex items-start gap-3">
-                      <DollarSign className="w-5 h-5 text-primary mt-1" />
-                      <div>
-                        <p className="text-foreground/60 text-sm">Service Price</p>
-                        <p className="text-foreground font-medium">${booking.providerId.price}/hour</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className={`rounded-xl p-6 ${
-                theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-              }`}>
-                <h2 className="text-lg font-semibold text-foreground mb-4">Status Timeline</h2>
-                <div className="space-y-4">
-                  {[
-                    { status: 'pending', label: 'Booking Created' },
-                    { status: 'accepted', label: 'Provider Accepted' },
-                    { status: 'completed', label: 'Service Complete' },
-                    { status: 'cancelled', label: 'Cancelled' },
-                  ].map((item, idx) => {
-                    const isDone = 
-                      (item.status === 'pending') ||
-                      (item.status === 'accepted' && ['accepted', 'completed'].includes(booking.status)) ||
-                      (item.status === 'completed' && booking.status === 'completed');
-                    
-                    return (
-                      <div key={idx} className="flex gap-4 pb-4 border-b border-border/30 last:border-0 last:pb-0">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-1 ${
-                          isDone ? 'bg-green-500' : booking.status === 'cancelled' ? 'bg-red-500' : 'border-2 border-foreground/30'
-                        }`}>
-                          {isDone && <CheckCircle className="w-4 h-4 text-white" />}
+                {/* ── Main card ────────────────────────────────────────────────────── */}
+                <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: 'spring', stiffness: 360, damping: 32 }}
+                    style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.75rem', marginBottom: '1.25rem', boxShadow: 'var(--shadow-md)' }}
+                >
+                    {/* Header row */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                        <div>
+                            <h1 style={{ margin: '0 0 0.375rem', fontFamily: 'Lora, serif', fontSize: '1.375rem', color: 'var(--color-fg)' }}>
+                                {categoryName} with {providerName}
+                            </h1>
+                            <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', color: 'var(--color-muted)' }}>
+                                Booking ref: #{booking._id.slice(-8).toUpperCase()}
+                            </p>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-foreground font-medium">{item.label}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {booking.status === 'completed' && !showReviewForm && (
-                <div className={`rounded-xl p-6 ${
-                  theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <MessageSquare className="w-5 h-5 text-foreground/60" />
-                      <div>
-                        <p className="text-foreground font-medium">Rate this service</p>
-                        <p className="text-foreground/60 text-sm">Share your experience with others</p>
-                      </div>
+                        <BookingStatusBadge status={booking.status} />
                     </div>
-                    <button
-                      onClick={() => setShowReviewForm(true)}
-                      className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition"
+
+                    {/* Details */}
+                    <DetailRow icon={<User size={17} />} label="Provider" value={<strong>{providerName}</strong>} />
+                    <DetailRow icon={<Tag size={17} />} label="Service" value={categoryName} />
+                    <DetailRow icon={<CalendarClock size={17} />} label="Scheduled Date" value={<>{formattedDate} at <strong>{formattedTime}</strong></>} />
+                    {price !== null && (
+                        <DetailRow icon={<DollarSign size={17} />} label="Rate" value={<><strong>${price}</strong>/hr</>} />
+                    )}
+                    <div style={{ borderBottom: 'none' }}>
+                        <DetailRow icon={<CheckCircle2 size={17} />} label="Status" value={<BookingStatusBadge status={booking.status} />} />
+                    </div>
+                </motion.div>
+
+                {/* ── Action buttons ────────────────────────────────────────────────── */}
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+
+                    {/* Cancel (pending only) */}
+                    {isPending && !cancelConfirm && (
+                        <motion.button
+                            onClick={() => setCancelConfirm(true)}
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.625rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-error)', background: 'rgba(249,111,112,0.06)', color: 'var(--color-error)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}
+                        >
+                            <XCircle size={15} /> Cancel Booking
+                        </motion.button>
+                    )}
+
+                    {/* Confirm cancel */}
+                    <AnimatePresence>
+                        {cancelConfirm && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                style={{ overflow: 'hidden', width: '100%' }}
+                            >
+                                <div style={{ padding: '1rem', background: 'rgba(249,111,112,0.07)', border: '1px solid rgba(249,111,112,0.25)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.875rem', flexWrap: 'wrap' }}>
+                                    <AlertTriangle size={18} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
+                                    <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-fg)', flex: 1 }}>
+                                        Are you sure you want to cancel this booking? This action cannot be undone.
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => setCancelConfirm(false)}
+                                            style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'none', color: 'var(--color-muted)', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', cursor: 'pointer' }}
+                                        >
+                                            Keep it
+                                        </button>
+                                        <button
+                                            onClick={handleCancel}
+                                            disabled={actionLoading}
+                                            style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-error)', color: 'white', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, cursor: actionLoading ? 'wait' : 'pointer', opacity: actionLoading ? 0.7 : 1 }}
+                                        >
+                                            {actionLoading ? 'Cancelling…' : 'Yes, Cancel'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Leave Review (completed only, toggleable) */}
+                    {isCompleted && !hasReview && !showReviewForm && (
+                        <motion.button
+                            onClick={() => setShowReviewForm(true)}
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="btn-primary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem' }}
+                        >
+                            ★ Leave a Review
+                        </motion.button>
+                    )}
+
+                    {/* View provider */}
+                    {providerProfile && (
+                        <Link
+                            to={`/provider/${typeof booking.providerId === 'string' ? booking.providerId : providerProfile._id}`}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.625rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'none', color: 'var(--color-fg)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none' }}
+                        >
+                            View Provider Profile
+                        </Link>
+                    )}
+                </div>
+
+                {/* ── Review Form (completed + user clicked Leave a Review) ─────────── */}
+                <AnimatePresence>
+                    {showReviewForm && isCompleted && (
+                        <motion.div
+                            key="review-form"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            style={{ overflow: 'hidden' }}
+                        >
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <ReviewForm
+                                    bookingId={booking._id}
+                                    providerName={providerName}
+                                    onSuccess={() => {
+                                        setShowReviewForm(false)
+                                        setHasReview(true)
+                                        toast.success('Review submitted! Thank you for your feedback.')
+                                    }}
+                                    onCancel={() => setShowReviewForm(false)}
+                                />
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* ── Cancelled note ────────────────────────────────────────────────── */}
+                {isCancelled && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={{ padding: '1rem', background: 'rgba(249,111,112,0.06)', border: '1px solid rgba(249,111,112,0.2)', borderRadius: 'var(--radius-md)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-error)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                     >
-                      Write Review
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {showReviewForm && (
-                <div className={`rounded-xl p-6 ${
-                  theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-                }`}>
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Leave a Review</h3>
-                  <ReviewForm
-                    bookingId={id!}
-                    onSubmit={handleReviewSubmit}
-                    onCancel={() => setShowReviewForm(false)}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className={`lg:col-span-1 rounded-xl p-6 h-fit ${
-              theme === 'dark' ? 'bg-card border border-border/30' : 'bg-card shadow-md'
-            }`}>
-              <h3 className="text-lg font-semibold text-foreground mb-4">Actions</h3>
-              <div className="space-y-3">
-                {booking.status === 'pending' && (
-                  <button
-                    onClick={handleCancel}
-                    disabled={actionLoading}
-                    className="w-full px-4 py-2 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg font-medium hover:bg-red-500/20 transition disabled:opacity-50"
-                  >
-                    {actionLoading ? 'Cancelling...' : 'Cancel Booking'}
-                  </button>
+                        <XCircle size={16} /> This booking has been cancelled.
+                    </motion.div>
                 )}
-                <button
-                  onClick={() => navigate('/search-providers')}
-                  className="w-full px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg font-medium hover:bg-primary/20 transition"
-                >
-                  Find More Services
-                </button>
-                <button
-                  onClick={() => navigate('/my-bookings')}
-                  className="w-full px-4 py-2 bg-foreground/5 text-foreground border border-foreground/10 rounded-lg font-medium hover:bg-foreground/10 transition"
-                >
-                  View All Bookings
-                </button>
-              </div>
+
             </div>
-          </div>
-        ) : (
-          <div className={`rounded-xl p-8 border-2 border-dashed border-border/30 text-center ${
-            theme === 'dark' ? 'bg-background/30' : 'bg-background/50'
-          }`}>
-            <Clock className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">Booking #{id?.substring(0, 8)}</h3>
-            <p className="text-foreground/60">Loading booking details...</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+        </main>
+    )
 }

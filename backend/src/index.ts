@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
-  : ["http://localhost:3000", "http://localhost:5173"]; // Vite default port
+  : ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"]; // Vite default ports
 
 app.use(
   cors({

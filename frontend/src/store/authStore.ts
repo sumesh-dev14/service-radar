@@ -1,111 +1,192 @@
-import { create } from 'zustand';
-import { User } from '../types/models';
-import api from '../services/api';
+/**
+ * Auth Store — Service Radar
+ * Ref: §State Management (Zustand), §Authentication Flow
+ *
+ * Manages authentication session:
+ *   - user:         currently logged-in User (null if not authenticated)
+ *   - status:       'idle' | 'loading' | 'authenticated' | 'unauthenticated'
+ *   - error:        last error message (null when clean)
+ *   - initialized:  true once initializeAuth() has run (prevents flash of logged-out UI)
+ *
+ * Persistence strategy:
+ *   - Token:  localStorage key 'sr_token'  (used in Axios interceptor)
+ *   - User:   localStorage key 'sr_user'   (JSON-serialised User object)
+ *   - initializeAuth() reads from localStorage on app boot (called in <App> useEffect)
+ *   - If localStorage has a user, calls GET /auth/me to verify token is still valid
+ */
 
-export interface AuthState {
-  user: User | null;
-  isLoading: boolean;
-  error: string | null;
-  initialized: boolean;
+import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
+import type { AuthStatus, LoginPayload, RegisterPayload, User } from '@/types/models'
+import * as authService from '@/services/authService'
+import { useProviderStore } from './providerStore'
+import { useBookingStore } from './bookingStore'
 
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, role: 'customer' | 'provider') => Promise<void>;
-  logout: () => Promise<void>;
-  setUser: (user: User | null) => void;
-  initializeAuth: () => void;
+// ── State + Actions Interface ─────────────────────────────────────────────────
+
+interface AuthState {
+    // State
+    user: User | null
+    status: AuthStatus
+    error: string | null
+    initialized: boolean   // true once initializeAuth() finishes (first render guard)
+
+    // Actions
+    initializeAuth: () => Promise<void>
+    login: (payload: LoginPayload) => Promise<void>
+    register: (payload: RegisterPayload) => Promise<void>
+    logout: () => Promise<void>
+    setUser: (user: User | null) => void
+    clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isLoading: false,
-  error: null,
-  initialized: false,
+// ── Store ─────────────────────────────────────────────────────────────────────
 
-  initializeAuth: () => {
-    // Load user from localStorage on app startup
-    const savedUser = localStorage.getItem('authUser');
-    console.log('[Auth] Initializing... savedUser from localStorage:', savedUser ? 'found' : 'not found');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        console.log('[Auth] Restored user:', user.email, 'role:', user.role);
-        set({ user, initialized: true });
-      } catch (e) {
-        console.error('[Auth] Failed to parse savedUser:', e);
-        localStorage.removeItem('authUser');
-        set({ initialized: true });
-      }
-    } else {
-      console.log('[Auth] No saved user, starting fresh');
-      set({ initialized: true });
-    }
-  },
+export const useAuthStore = create<AuthState>()(
+    devtools(
+        (set) => ({
+            // ── Initial state ────────────────────────────────────────────────────
+            user: null,
+            status: 'idle',
+            error: null,
+            initialized: false,
 
-  login: async (email: string, password: string) => {
-    console.log('[Auth] Login attempt:', email);
-    set({ isLoading: true, error: null });
-    try {
-      const response = await api.post<any>('/auth/login', {
-        email,
-        password,
-      });
-      const { user } = response.data.data;
-      console.log('[Auth] Login successful:', user.email, 'role:', user.role);
-      // Save to localStorage
-      localStorage.setItem('authUser', JSON.stringify(user));
-      set({ user, isLoading: false });
-      console.log('[Auth] User saved to localStorage and Zustand');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Login failed';
-      console.error('[Auth] Login failed:', message);
-      set({ error: message, isLoading: false });
-      throw error;
-    }
-  },
+            // ── initializeAuth ───────────────────────────────────────────────────
+            /**
+             * Called once on app boot (in App.tsx useEffect).
+             * Reads user from localStorage and validates with GET /auth/me.
+             * If validation fails → clears stale data, user is treated as logged out.
+             */
+            initializeAuth: async () => {
+                set({ status: 'loading' }, false, 'auth/initializeAuth/start')
 
-  register: async (name: string, email: string, password: string, role: 'customer' | 'provider') => {
-    console.log('[Auth] Register attempt:', email, 'role:', role);
-    set({ isLoading: true, error: null });
-    try {
-      const response = await api.post<any>('/auth/register', {
-        name,
-        email,
-        password,
-        role,
-      });
-      const { user } = response.data.data;
-      console.log('[Auth] Register successful:', user.email, 'role:', user.role);
-      // Save to localStorage
-      localStorage.setItem('authUser', JSON.stringify(user));
-      set({ user, isLoading: false });
-      console.log('[Auth] User saved to localStorage and Zustand');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Registration failed';
-      console.error('[Auth] Register failed:', message);
-      set({ error: message, isLoading: false });
-      throw error;
-    }
-  },
+                const savedUser = localStorage.getItem('sr_user')
 
-  logout: async () => {
-    try {
-      // Call logout endpoint to clear cookie on backend
-      await api.post('/auth/logout');
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      // Clear user state and localStorage
-      localStorage.removeItem('authUser');
-      set({ user: null });
-    }
-  },
+                if (!savedUser) {
+                    // No session stored → immediately mark as unauthenticated
+                    set(
+                        { status: 'unauthenticated', initialized: true },
+                        false,
+                        'auth/initializeAuth/noSession',
+                    )
+                    // Clear provider profile cache
+                    useProviderStore.getState().clearMyProfile()
+                    useBookingStore.getState().clearBookings()
+                    return
+                }
 
-  setUser: (user: User | null) => {
-    if (user) {
-      localStorage.setItem('authUser', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('authUser');
-    }
-    set({ user });
-  },
-}));
+                try {
+                    // Validate token with backend
+                    const user = await authService.getMe()
+                    set(
+                        { user, status: 'authenticated', initialized: true, error: null },
+                        false,
+                        'auth/initializeAuth/success',
+                    )
+                } catch {
+                    // Token expired or invalid — clear stale data
+                    localStorage.removeItem('sr_user')
+                    localStorage.removeItem('sr_token')
+                    set(
+                        { user: null, status: 'unauthenticated', initialized: true },
+                        false,
+                        'auth/initializeAuth/expired',
+                    )
+                    // Clear provider profile cache
+                    useProviderStore.getState().clearMyProfile()
+                    useBookingStore.getState().clearBookings()
+                }
+            },
+
+            // ── login ────────────────────────────────────────────────────────────
+            login: async (payload) => {
+                set({ status: 'loading', error: null }, false, 'auth/login/start')
+                try {
+                    const user = await authService.login(payload)
+                    set(
+                        { user, status: 'authenticated', error: null },
+                        false,
+                        'auth/login/success',
+                    )
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Login failed'
+                    set(
+                        { status: 'unauthenticated', error: message },
+                        false,
+                        'auth/login/error',
+                    )
+                    throw err  // re-throw so form components can handle it
+                }
+            },
+
+            // ── register ─────────────────────────────────────────────────────────
+            register: async (payload) => {
+                set({ status: 'loading', error: null }, false, 'auth/register/start')
+                try {
+                    const user = await authService.register(payload)
+                    set(
+                        { user, status: 'authenticated', error: null },
+                        false,
+                        'auth/register/success',
+                    )
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Registration failed'
+                    set(
+                        { status: 'unauthenticated', error: message },
+                        false,
+                        'auth/register/error',
+                    )
+                    throw err
+                }
+            },
+
+            // ── logout ───────────────────────────────────────────────────────────
+            logout: async () => {
+                set({ status: 'loading' }, false, 'auth/logout/start')
+                try {
+                    await authService.logout()
+                } finally {
+                    // Always reset state even if network call fails
+                    set(
+                        { user: null, status: 'unauthenticated', error: null },
+                        false,
+                        'auth/logout/done',
+                    )
+                    // Clear provider profile cache and bookings
+                    useProviderStore.getState().clearMyProfile()
+                    useBookingStore.getState().clearBookings()
+                }
+            },
+
+            // ── setUser ──────────────────────────────────────────────────────────
+            /** Directly update user (e.g., after profile edit) */
+            setUser: (user) => {
+                if (user) {
+                    localStorage.setItem('sr_user', JSON.stringify(user))
+                    set({ user, status: 'authenticated' }, false, 'auth/setUser')
+                } else {
+                    localStorage.removeItem('sr_user')
+                    set({ user: null, status: 'unauthenticated' }, false, 'auth/setUser/null')
+                }
+            },
+
+            // ── clearError ───────────────────────────────────────────────────────
+            clearError: () => set({ error: null }, false, 'auth/clearError'),
+        }),
+        { name: 'AuthStore' },
+    ),
+)
+
+// ── Derived Selectors ─────────────────────────────────────────────────────────
+
+/** True when user is logged in */
+export const selectIsAuthenticated = (s: AuthState) =>
+    s.status === 'authenticated' && s.user !== null
+
+/** True while login/register/logout is in flight */
+export const selectAuthLoading = (s: AuthState) =>
+    s.status === 'loading'
+
+/** User's role string or null */
+export const selectUserRole = (s: AuthState) =>
+    s.user?.role ?? null

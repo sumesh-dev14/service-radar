@@ -1,73 +1,158 @@
-import { useTheme } from '../../providers/ThemeProvider';
-import ProviderCard from './ProviderCard';
-import { Grid } from 'lucide-react';
+/**
+ * ProviderList — Service Radar
+ * Ref: §Component Architecture (Provider/), §Provider Discovery
+ *
+ * Renders a responsive grid of ProviderCards with:
+ *   - Stagger entrance animation (each card delays by index * 60ms)
+ *   - Loading state: SkeletonCard grid
+ *   - Empty state: illustrated message with icon
+ *   - AnimatePresence for smooth card add/remove transitions
+ *
+ * Used by:
+ *   - SearchProviders page (Phase 14) — full search results grid
+ *   - CustomerDashboard (Phase 15) — "Nearby Providers" section
+ */
 
-interface Provider {
-  _id: string;
-  userId?: any;
-  categoryId?: any;
-  bio: string;
-  price: number;
-  rating: number;
-  totalReviews: number;
-  isAvailable: boolean;
-  location: any;
+import { AnimatePresence, motion } from 'framer-motion'
+import { SearchX } from 'lucide-react'
+import { ProviderCard } from './ProviderCard'
+import { SkeletonCard } from '@/components/Common/SkeletonCard'
+import type { ProviderProfile } from '@/types/models'
+
+// ── Stagger container variants ────────────────────────────────────────────────
+
+const containerVariants = {
+    hidden: {},
+    visible: {
+        transition: {
+            staggerChildren: 0.06,
+        },
+    },
 }
+
+// ── Empty State ───────────────────────────────────────────────────────────────
+
+function EmptyState({ message }: { message?: string }) {
+    return (
+        <motion.div
+            key="empty"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{
+                gridColumn: '1 / -1',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '1rem',
+                padding: '4rem 2rem',
+                textAlign: 'center',
+                color: 'var(--color-muted)',
+            }}
+        >
+            <motion.div
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
+            >
+                <SearchX
+                    size={52}
+                    style={{ color: 'var(--color-primary)', opacity: 0.4 }}
+                    strokeWidth={1.5}
+                />
+            </motion.div>
+            <p
+                style={{
+                    fontFamily: 'Lora, serif',
+                    fontSize: '1.125rem',
+                    fontWeight: 600,
+                    color: 'var(--color-fg)',
+                    margin: 0,
+                }}
+            >
+                No providers found
+            </p>
+            <p
+                style={{
+                    fontFamily: 'Poppins, sans-serif',
+                    fontSize: '0.875rem',
+                    margin: 0,
+                    maxWidth: 320,
+                    lineHeight: 1.6,
+                }}
+            >
+                {message ??
+                    'Try adjusting your filters or searching for a different service.'}
+            </p>
+        </motion.div>
+    )
+}
+
+// ── ProviderList ──────────────────────────────────────────────────────────────
 
 interface ProviderListProps {
-  providers: Provider[];
-  isLoading?: boolean;
-  isEmpty?: boolean;
+    providers: ProviderProfile[]
+    isLoading?: boolean
+    skeletonCount?: number
+    emptyMessage?: string
+    /** Grid column breakpoints. Accepts a CSS grid-template-columns value */
+    columns?: string
 }
 
-export default function ProviderList({ providers, isLoading = false, isEmpty = false }: ProviderListProps) {
-  const { theme } = useTheme();
+export function ProviderList({
+    providers,
+    isLoading = false,
+    skeletonCount = 6,
+    emptyMessage,
+    columns = 'repeat(auto-fill, minmax(280px, 1fr))',
+}: ProviderListProps) {
 
-  if (isEmpty) {
+    const gridStyle: React.CSSProperties = {
+        display: 'grid',
+        gridTemplateColumns: columns,
+        gap: '1.25rem',
+        alignItems: 'start',
+    }
+
+    // ── Loading state ─────────────────────────────────────────────────────────
+    if (isLoading) {
+        return (
+            <div style={gridStyle} aria-busy="true" aria-label="Loading providers">
+                <SkeletonCard count={skeletonCount} />
+            </div>
+        )
+    }
+
+    // ── Empty state ────────────────────────────────────────────────────────────
+    if (!providers.length) {
+        return (
+            <div style={gridStyle}>
+                <AnimatePresence>
+                    <EmptyState message={emptyMessage} />
+                </AnimatePresence>
+            </div>
+        )
+    }
+
+    // ── Results grid ───────────────────────────────────────────────────────────
     return (
-      <div className={`rounded-xl p-8 border-2 border-dashed border-border/30 text-center ${
-        theme === 'dark' ? 'bg-background/30' : 'bg-background/50'
-      }`}>
-        <Grid className="w-12 h-12 text-foreground/30 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-foreground mb-2">No providers found</h3>
-        <p className="text-foreground/60">
-          Try adjusting your filters or search criteria
-        </p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[...Array(6)].map((_, i) => (
-          <div
-            key={i}
-            className={`rounded-xl h-64 animate-pulse ${
-              theme === 'dark' ? 'bg-background/50' : 'bg-background/30'
-            }`}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {providers.map((provider) => (
-        <ProviderCard
-          key={provider._id}
-          id={provider._id}
-          name={typeof provider.userId === 'string' ? 'Provider' : provider.userId?.name || 'Provider'}
-          category={typeof provider.categoryId === 'string' ? 'Service' : provider.categoryId?.name || 'Service'}
-          rating={provider.rating}
-          reviews={provider.totalReviews}
-          price={provider.price}
-          location={`${provider.location?.lat?.toFixed(2)}, ${provider.location?.lng?.toFixed(2)}`}
-          isAvailable={provider.isAvailable}
-          bio={provider.bio}
-        />
-      ))}
-    </div>
-  );
+        <motion.div
+            style={gridStyle}
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            role="list"
+            aria-label={`${providers.length} provider${providers.length !== 1 ? 's' : ''} found`}
+        >
+            <AnimatePresence mode="popLayout">
+                {providers.map(provider => (
+                    <div key={provider._id} role="listitem">
+                        <ProviderCard provider={provider} />
+                    </div>
+                ))}
+            </AnimatePresence>
+        </motion.div>
+    )
 }

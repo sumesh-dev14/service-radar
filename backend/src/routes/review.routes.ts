@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createReview,
+  checkReviewExists,
   getProviderReviews,
 } from "../controllers/review.controller";
 import { authMiddleware } from "../middleware/auth.middleware";
@@ -19,6 +20,13 @@ reviewRouter.post(
   requireRole("customer"),
   createReview
 );
+
+/**
+ * GET /check/:bookingId
+ * Check if a review exists for a booking
+ * Requires: Auth
+ */
+reviewRouter.get("/check/:bookingId", authMiddleware, checkReviewExists);
 
 /**
  * GET /provider/:id

@@ -6,6 +6,7 @@ import {
   acceptBooking,
   cancelBooking,
   completeBooking,
+  updateBookingStatus,
 } from "../controllers/booking.controller";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { requireRole } from "../middleware/role.middleware";
@@ -25,11 +26,11 @@ bookingRouter.post(
 );
 
 /**
- * GET /me
+ * GET /
  * Get all bookings for the logged-in user (as customer or provider)
  * Requires: Auth
  */
-bookingRouter.get("/me", authMiddleware, getMyBookings);
+bookingRouter.get("/", authMiddleware, getMyBookings);
 
 /**
  * GET /:id
@@ -37,6 +38,17 @@ bookingRouter.get("/me", authMiddleware, getMyBookings);
  * Requires: Auth + Must be a participant
  */
 bookingRouter.get("/:id", authMiddleware, getBookingById);
+
+/**
+ * PATCH /:id/status
+ * Update booking status (generic endpoint)
+ * Requires: Auth + Must be a participant
+ */
+bookingRouter.patch(
+  "/:id/status",
+  authMiddleware,
+  updateBookingStatus
+);
 
 /**
  * PATCH /:id/accept

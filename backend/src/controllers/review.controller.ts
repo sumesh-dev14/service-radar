@@ -100,7 +100,36 @@ export const createReview = async (
     sendError(res, 500, "Failed to create review");
   }
 };
+export const checkReviewExists = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { bookingId } = req.params;
 
+    // Validate ObjectId
+    if (!isValidObjectId(bookingId)) {
+      sendError(res, 400, "Invalid booking ID");
+      return;
+    }
+
+    // Check if review exists for this booking
+    const existingReview = await Review.findOne({ bookingId: new Types.ObjectId(bookingId) });
+
+    sendSuccess(res, 200, "Review status checked", {
+      exists: !!existingReview,
+      review: existingReview ? {
+        _id: existingReview._id,
+        rating: existingReview.rating,
+        comment: existingReview.comment,
+        createdAt: existingReview.createdAt
+      } : null
+    });
+  } catch (error) {
+    console.error("Check review exists error:", error);
+    sendError(res, 500, "Failed to check review status");
+  }
+};
 export const getProviderReviews = async (
   req: AuthRequest,
   res: Response
