@@ -11,39 +11,50 @@ class RankingEngine {
   private lists: Map<string, SkipList> = new Map();
 
   async bootstrap(): Promise<void> {
-    try {
-      // Load all available providers from MongoDB
-      // Fix: Query already safely skips unavailable providers (isAvailable: true)
-      const providers = await ProviderProfile.find({ isAvailable: true })
-        .select("_id categoryId rating price location")
-        .lean();
+    const maxAttempts = 4;
+    const baseDelayMs = 1500;
 
-      for (const provider of providers) {
-        // Fix: Missing null checks for database edge cases
-        if (!provider.categoryId || !provider._id) continue;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        this.lists.clear();
 
-        const categoryId = provider.categoryId.toString();
+        const providers = await ProviderProfile.find({ isAvailable: true })
+          .select("_id categoryId rating price location")
+          .lean();
 
-        if (!this.lists.has(categoryId)) {
-          this.lists.set(categoryId, new SkipList());
+        for (const provider of providers) {
+          if (!provider.categoryId || !provider._id) continue;
+
+          const categoryId = provider.categoryId.toString();
+
+          if (!this.lists.has(categoryId)) {
+            this.lists.set(categoryId, new SkipList());
+          }
+
+          const score = computeScore(
+            provider.rating || 0,
+            provider.price || 0,
+            0
+          );
+
+          this.lists.get(categoryId)!.insert(provider._id.toString(), score);
         }
 
-        // Calculate score (distance = 0 for bootstrap, no lat/lng provided)
-        // Fix: Fallbacks for ranking attributes to prevent NaN score values
-        const score = computeScore(
-          provider.rating || 0,
-          provider.price || 0,
-          0
+        console.log(
+          `✓ Ranking engine bootstrapped with ${this.lists.size} categories`
         );
-
-        this.lists.get(categoryId)!.insert(provider._id.toString(), score);
+        return;
+      } catch (error) {
+        const isLast = attempt === maxAttempts;
+        console.error(
+          `Ranking engine bootstrap error (attempt ${attempt}/${maxAttempts}):`,
+          error
+        );
+        if (isLast) {
+          return;
+        }
+        await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
       }
-
-      console.log(
-        `✓ Ranking engine bootstrapped with ${this.lists.size} categories`
-      );
-    } catch (error) {
-      console.error("Ranking engine bootstrap error:", error);
     }
   }
 
@@ -64,8 +75,9 @@ class RankingEngine {
     const score = computeScore(rating || 0, price || 0, distance || 0);
     this.lists.get(categoryId)!.insert(providerId, score);
 
-    // Testing log requested to verify Skip List updates:
-    console.log(`Updated provider ${providerId} with new score ${score}`);
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`Updated provider ${providerId} with new score ${score}`);
+    }
   }
 
   remove(

@@ -15,7 +15,7 @@
  * Displays current profile card below form when in EDIT mode.
  */
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LocateFixed, Loader2, CheckCircle2, AlertCircle, ChevronLeft, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -76,34 +76,33 @@ export default function ProviderProfile() {
     const [manualLat, setManualLat] = useState('')
     const [manualLng, setManualLng] = useState('')
 
-    const initialized = useRef(false)
+    const profileKey = myProfile?._id ?? ''
+    const [appliedProfileKey, setAppliedProfileKey] = useState('')
+
+    // Sync form when myProfile appears/changes (or clear when logged-out / no profile)
+    if (!myProfile) {
+        if (appliedProfileKey !== '') {
+            setAppliedProfileKey('')
+            setBio('')
+            setPrice('')
+            setCategoryId('')
+            setManualLat('')
+            setManualLng('')
+        }
+    } else if (appliedProfileKey !== profileKey) {
+        setAppliedProfileKey(profileKey)
+        setBio(myProfile.bio ?? '')
+        setPrice(String(myProfile.price ?? ''))
+        setCategoryId(isPopulatedCategory(myProfile.categoryId) ? myProfile.categoryId._id : String(myProfile.categoryId))
+        setManualLat(String(myProfile.location?.lat ?? ''))
+        setManualLng(String(myProfile.location?.lng ?? ''))
+    }
 
     // Load profile + categories on mount
     useEffect(() => {
         getCategories().then(setCategories).catch(() => { })
-        loadMyProfile(true)  // Force fresh load to avoid stale cache
-        initialized.current = false  // Reset initialized flag to re-initialize form
+        void loadMyProfile(true)
     }, [loadMyProfile])
-
-    // Pre-fill form when myProfile loads
-    useEffect(() => {
-        if (myProfile && !initialized.current) {
-            initialized.current = true
-            setBio(myProfile.bio ?? '')
-            setPrice(String(myProfile.price ?? ''))
-            setCategoryId(isPopulatedCategory(myProfile.categoryId) ? myProfile.categoryId._id : String(myProfile.categoryId))
-            setManualLat(String(myProfile.location?.lat ?? ''))
-            setManualLng(String(myProfile.location?.lng ?? ''))
-        }
-    }, [myProfile])
-
-    // When geolocation resolves, populate manual fields too (for display)
-    useEffect(() => {
-        if (location) {
-            setManualLat(String(location.lat))
-            setManualLng(String(location.lng))
-        }
-    }, [location])
 
     const isEditMode = !!myProfile
 
@@ -262,7 +261,17 @@ export default function ProviderProfile() {
                     {!isEditMode && (
                         <Field label="Your Location" hint="Used to show distance to customers. Cannot be changed after creation.">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-                                <motion.button type="button" onClick={getLocation} disabled={geoLoading}
+                                <motion.button
+                                    type="button"
+                                    onClick={() =>
+                                        getLocation({
+                                            onSuccess: loc => {
+                                                setManualLat(String(loc.lat))
+                                                setManualLng(String(loc.lng))
+                                            },
+                                        })
+                                    }
+                                    disabled={geoLoading}
                                     whileHover={geoLoading ? {} : { scale: 1.02 }} whileTap={geoLoading ? {} : { scale: 0.97 }}
                                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.625rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-primary)', background: 'var(--color-primary)10', color: 'var(--color-primary)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', fontWeight: 500, cursor: geoLoading ? 'wait' : 'pointer' }}
                                     aria-label="Detect my location automatically">

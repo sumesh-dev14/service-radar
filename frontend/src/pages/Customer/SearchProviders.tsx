@@ -19,6 +19,7 @@ import { MapPin, Loader2, X, SlidersHorizontal, LocateFixed } from 'lucide-react
 import { useProviderStore } from '@/store/providerStore'
 import { ProviderList } from '@/components/Provider'
 import { getCategories } from '@/services/categoryService'
+import { CategoryBrowseIcon } from '@/utils/categoryBrowse'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import type { Category } from '@/types/models'
@@ -121,6 +122,86 @@ export default function SearchProviders() {
                     </div>
                 </div>
 
+                {/* ── Quick category browse (syncs with sidebar + URL) ───────────── */}
+                {categories.length > 0 && (
+                    <div style={{ marginBottom: '1.25rem' }}>
+                        <p style={{ margin: '0 0 0.5rem', fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            Browse categories
+                        </p>
+                        <div
+                            role="tablist"
+                            aria-label="Filter by service category"
+                            style={{
+                                display: 'flex',
+                                flexWrap: 'nowrap',
+                                gap: '0.5rem',
+                                overflowX: 'auto',
+                                paddingBottom: '0.35rem',
+                                WebkitOverflowScrolling: 'touch',
+                                scrollbarWidth: 'thin',
+                            }}
+                        >
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={filters.category === ''}
+                                onClick={() => setFilter('category', '')}
+                                style={{
+                                    flexShrink: 0,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: '0.45rem 0.9rem',
+                                    borderRadius: 999,
+                                    border: `1px solid ${filters.category === '' ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                                    background: filters.category === '' ? 'var(--color-primary)18' : 'var(--color-card)',
+                                    color: filters.category === '' ? 'var(--color-primary)' : 'var(--color-fg)',
+                                    fontFamily: 'Poppins, sans-serif',
+                                    fontSize: '0.8125rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                All
+                            </button>
+                            {categories.map(c => {
+                                const active = filters.category === c._id
+                                return (
+                                    <button
+                                        key={c._id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={active}
+                                        title={c.description}
+                                        onClick={() => setFilter('category', c._id)}
+                                        style={{
+                                            flexShrink: 0,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            padding: '0.45rem 0.85rem',
+                                            borderRadius: 999,
+                                            border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                                            background: active ? 'var(--color-primary)18' : 'var(--color-card)',
+                                            color: active ? 'var(--color-primary)' : 'var(--color-fg)',
+                                            fontFamily: 'Poppins, sans-serif',
+                                            fontSize: '0.8125rem',
+                                            fontWeight: 500,
+                                            cursor: 'pointer',
+                                            maxWidth: 280,
+                                        }}
+                                    >
+                                        <span style={{ display: 'flex', color: active ? 'var(--color-primary)' : 'var(--color-muted)' }} aria-hidden>
+                                            <CategoryBrowseIcon name={c.name} description={c.description} size={16} />
+                                        </span>
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* ── Layout: Sidebar + Results ──────────────────────────────────── */}
                 <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
 
@@ -130,18 +211,18 @@ export default function SearchProviders() {
                             <motion.aside
                                 key="sidebar"
                                 initial={{ opacity: 0, width: 0, x: -20 }}
-                                animate={{ opacity: 1, width: 260, x: 0 }}
+                                animate={{ opacity: 1, width: 280, x: 0 }}
                                 exit={{ opacity: 0, width: 0, x: -20 }}
                                 transition={{ type: 'spring', stiffness: 380, damping: 36 }}
                                 style={{ flexShrink: 0, overflow: 'hidden' }}
                                 aria-label="Provider search filters"
                             >
-                                <div style={{ width: 260, background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                <div style={{ width: 280, background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
                                     {/* Category */}
                                     <div>
                                         <label htmlFor="filter-category" style={{ display: 'block', fontFamily: 'Poppins, sans-serif', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-fg)', marginBottom: '0.5rem' }}>
-                                            Category
+                                            Browse by category
                                         </label>
                                         <select
                                             id="filter-category"
@@ -149,11 +230,16 @@ export default function SearchProviders() {
                                             onChange={e => setFilter('category', e.target.value)}
                                             style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-fg)', fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', outline: 'none', cursor: 'pointer' }}
                                         >
-                                            <option value="">All Categories</option>
+                                            <option value="">All categories</option>
                                             {categories.map(c => (
-                                                <option key={c._id} value={c._id}>{c.name}</option>
+                                                <option key={c._id} value={c._id} title={c.description}>
+                                                    {c.name}
+                                                </option>
                                             ))}
                                         </select>
+                                        <p style={{ margin: '0.35rem 0 0', fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', lineHeight: 1.45 }}>
+                                            Matches the category chips above and your profile catalog.
+                                        </p>
                                     </div>
 
                                     {/* Max price */}
@@ -231,7 +317,7 @@ export default function SearchProviders() {
                                         ) : (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                                 <motion.button
-                                                    onClick={getLocation}
+                                                    onClick={() => getLocation()}
                                                     disabled={geoLoading}
                                                     whileHover={geoLoading ? {} : { scale: 1.02 }}
                                                     whileTap={geoLoading ? {} : { scale: 0.97 }}

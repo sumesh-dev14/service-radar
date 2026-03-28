@@ -48,7 +48,7 @@ interface ProviderState {
     clearCurrentProvider: () => void
 
     // Actions — Profile management
-    loadMyProfile: () => Promise<void>
+    loadMyProfile: (force?: boolean) => Promise<void>
     createMyProfile: (payload: Parameters<typeof providerService.createProviderProfile>[0]) => Promise<void>
     updateMyProfile: (payload: Parameters<typeof providerService.updateProviderProfile>[0]) => Promise<void>
     toggleMyAvailability: () => Promise<void>

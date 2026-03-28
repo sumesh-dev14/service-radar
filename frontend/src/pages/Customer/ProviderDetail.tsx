@@ -22,7 +22,6 @@ import {
 import { useProviderStore } from '@/store/providerStore'
 import { useAuthStore } from '@/store/authStore'
 import { getProviderReviews } from '@/services/providerService'
-import { ProviderList } from '@/components/Provider'
 import { ReviewList } from '@/components/Review'
 import { BookingForm } from '@/components/Booking'
 import type { Review, ReviewStats, ProviderProfile, PopulatedUser, PopulatedCategory } from '@/types/models'

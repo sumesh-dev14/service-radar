@@ -86,9 +86,9 @@ export default function CustomerDashboard() {
             .slice(0, 5)
     }, [bookings])
 
-    useEffect(() => { 
-        fetchBookings() 
-    }, [])
+    useEffect(() => {
+        void fetchBookings()
+    }, [fetchBookings])
 
     const total = bookings.length
     const pending = bookings.filter(b => b.status === 'pending').length

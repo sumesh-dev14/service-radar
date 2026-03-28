@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getMongoConnectOptions } from "./mongoClientOptions";
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
@@ -14,7 +15,7 @@ export const connectDB = async (): Promise<void> => {
         throw new Error("MONGO_URI environment variable is not defined");
       }
 
-      await mongoose.connect(mongoUri);
+      await mongoose.connect(mongoUri, getMongoConnectOptions());
       console.log("✓ MongoDB connected successfully");
       return;
     } catch (error) {

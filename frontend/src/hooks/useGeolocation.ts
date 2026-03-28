@@ -14,7 +14,7 @@
  *
  * Usage:
  *   const { location, isLoading, error, getLocation } = useGeolocation()
- *   <button onClick={getLocation}>Use My Location</button>
+ *   <button onClick={() => getLocation()}>Use My Location</button>
  */
 
 import { useState, useCallback } from 'react'
@@ -27,8 +27,13 @@ interface GeolocationState {
     isSupported: boolean
 }
 
+export type GeolocationCallbacks = {
+    /** Called when coordinates are successfully read (same tick as hook state update). */
+    onSuccess?: (location: GeoLocation) => void
+}
+
 interface UseGeolocationReturn extends GeolocationState {
-    getLocation: () => void
+    getLocation: (callbacks?: GeolocationCallbacks) => void
     clearLocation: () => void
 }
 
@@ -65,7 +70,7 @@ export function useGeolocation(): UseGeolocationReturn {
 
     // ── getLocation — imperative trigger ─────────────────────────────────────
 
-    const getLocation = useCallback(() => {
+    const getLocation = useCallback((callbacks?: GeolocationCallbacks) => {
         if (!isSupported) {
             setState(prev => ({
                 ...prev,
@@ -79,15 +84,17 @@ export function useGeolocation(): UseGeolocationReturn {
         navigator.geolocation.getCurrentPosition(
             // Success
             (position: GeolocationPosition) => {
+                const location: GeoLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                }
                 setState({
-                    location: {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                    },
+                    location,
                     isLoading: false,
                     error: null,
                     isSupported: true,
                 })
+                callbacks?.onSuccess?.(location)
             },
             // Error
             (err: GeolocationPositionError) => {

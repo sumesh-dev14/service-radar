@@ -34,7 +34,9 @@ export default function MyBookings() {
     const { bookings, isLoading, fetchBookings } = useBookingStore()
     const [activeTab, setActiveTab] = useState<Tab>('all')
 
-    useEffect(() => { fetchBookings() }, [])
+    useEffect(() => {
+        void fetchBookings()
+    }, [fetchBookings])
 
     const filtered = activeTab === 'all'
         ? bookings

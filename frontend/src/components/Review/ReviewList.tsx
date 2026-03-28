@@ -16,6 +16,7 @@
  * Used by: ProviderDetail page (Phase 14)
  */
 
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Star, MessageSquare } from 'lucide-react'
 import { SkeletonCard } from '@/components/Common/SkeletonCard'
@@ -126,6 +127,12 @@ function StatsHeader({ stats, reviews }: StatsHeaderProps) {
 // ── Single review card ────────────────────────────────────────────────────────
 
 function ReviewCard({ review, index }: { review: Review; index: number }) {
+    const [now, setNow] = useState(() => Date.now())
+    useEffect(() => {
+        const id = window.setInterval(() => setNow(Date.now()), 60_000)
+        return () => window.clearInterval(id)
+    }, [])
+
     const reviewerName = isPopulatedBookingUser(review.customerId)
         ? review.customerId.name
         : 'Anonymous'
@@ -138,7 +145,7 @@ function ReviewCard({ review, index }: { review: Review; index: number }) {
         .toUpperCase()
 
     const timeAgo = (() => {
-        const diff = Date.now() - new Date(review.createdAt).getTime()
+        const diff = now - new Date(review.createdAt).getTime()
         const days = Math.floor(diff / 86400000)
         if (days === 0) return 'Today'
         if (days === 1) return 'Yesterday'

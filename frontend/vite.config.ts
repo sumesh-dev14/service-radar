@@ -13,10 +13,18 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_DEV_API_ORIGIN ?? 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       },
     },
+  },
+  build: {
+    sourcemap: false,
+    target: 'es2020',
+    minify: 'esbuild',
+  },
+  preview: {
+    port: 4173,
   },
 })

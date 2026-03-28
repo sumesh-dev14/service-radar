@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- ToastProvider + useToastContext belong together */
 /**
  * Toast Notification System — Service Radar
  * Ref: §UI/UX Design Patterns, §Accessibility Requirements (aria-live)

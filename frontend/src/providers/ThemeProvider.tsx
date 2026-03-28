@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- ThemeProvider + useTheme are a single module API */
 /**
  * ThemeProvider — Service Radar
  * Ref: §Design System, §Dark Mode

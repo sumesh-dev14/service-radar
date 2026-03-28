@@ -13,28 +13,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Search, ShieldCheck, CalendarCheck, Wrench, Zap, Brush, Flame, Leaf, Hammer, Star } from 'lucide-react'
+import { Search, ShieldCheck, CalendarCheck } from 'lucide-react'
 import { useProviderStore } from '@/store/providerStore'
 import { ProviderList } from '@/components/Provider'
 import { getCategories } from '@/services/categoryService'
+import { CategoryBrowseIcon } from '@/utils/categoryBrowse'
 import type { Category } from '@/types/models'
-
-// ── Category icon map (maps name → Lucide icon) ───────────────────────────────
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-    plumbing: <Wrench size={26} strokeWidth={1.7} />,
-    electrical: <Zap size={26} strokeWidth={1.7} />,
-    cleaning: <Brush size={26} strokeWidth={1.7} />,
-    hvac: <Flame size={26} strokeWidth={1.7} />,
-    gardening: <Leaf size={26} strokeWidth={1.7} />,
-    carpentry: <Hammer size={26} strokeWidth={1.7} />,
-    default: <Star size={26} strokeWidth={1.7} />,
-}
-
-function categoryIcon(name: string) {
-    const key = name.toLowerCase().replace(/\s+/g, '')
-    return CATEGORY_ICONS[key] ?? CATEGORY_ICONS.default
-}
 
 const CATEGORY_GRADIENTS = [
     'linear-gradient(135deg, #667eea, #764ba2)',
@@ -114,7 +98,7 @@ export default function Home() {
 
                 <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
                     style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '1rem', color: 'var(--color-muted)', maxWidth: 480, lineHeight: 1.65 }}>
-                    From plumbing to cleaning — connect with verified professionals in your area. Book in minutes.
+                    From home repairs to pet care — browse by category and book verified professionals near you.
                 </motion.p>
 
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
@@ -131,48 +115,56 @@ export default function Home() {
             {/* ── Category Grid ─────────────────────────────────────────────────── */}
             {(catsLoading || categories.length > 0) && (
                 <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1.5rem 4rem' }}>
-                    <h2 style={{ fontFamily: 'Lora, serif', fontSize: '1.375rem', marginBottom: '1.5rem', color: 'var(--color-fg)' }}>
-                        Browse by Category
-                    </h2>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <h2 style={{ fontFamily: 'Lora, serif', fontSize: '1.375rem', margin: '0 0 0.35rem', color: 'var(--color-fg)' }}>
+                            Browse by Category
+                        </h2>
+                        <p style={{ margin: 0, fontFamily: 'Poppins, sans-serif', fontSize: '0.875rem', color: 'var(--color-muted)', maxWidth: 520, lineHeight: 1.55 }}>
+                            Every tile is live from your catalog. Click to open search with that category applied.
+                        </p>
+                    </div>
 
                     {catsLoading ? (
-                        // Skeleton tiles
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
-                            {Array.from({ length: 6 }).map((_, i) => (
-                                <div key={i} style={{ height: 120, borderRadius: 'var(--radius-lg)', background: 'var(--color-card)', border: '1px solid var(--color-border)', animation: 'shimmer 1.5s ease-in-out infinite' }} />
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+                            {Array.from({ length: 8 }).map((_, i) => (
+                                <div key={i} style={{ height: 148, borderRadius: 'var(--radius-lg)', background: 'var(--color-card)', border: '1px solid var(--color-border)', animation: 'shimmer 1.5s ease-in-out infinite' }} />
                             ))}
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
                             {categories.map((cat, i) => (
                                 <motion.button
                                     key={cat._id}
                                     onClick={() => navigate(`/search?category=${cat._id}`)}
                                     initial={{ opacity: 0, y: 16 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: i * 0.05 }}
-                                    whileHover={{ scale: 1.04, y: -3 }}
-                                    whileTap={{ scale: 0.97 }}
+                                    transition={{ delay: Math.min(i * 0.04, 0.5) }}
+                                    whileHover={{ scale: 1.02, y: -4 }}
+                                    whileTap={{ scale: 0.98 }}
                                     style={{
                                         display: 'flex',
                                         flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '0.75rem',
-                                        padding: '1.375rem 0.75rem',
+                                        alignItems: 'flex-start',
+                                        textAlign: 'left',
+                                        gap: '0.875rem',
+                                        padding: '1.25rem 1.125rem',
                                         borderRadius: 'var(--radius-lg)',
                                         border: '1px solid var(--color-border)',
                                         background: 'var(--color-card)',
                                         cursor: 'pointer',
-                                        textAlign: 'center',
                                         boxShadow: 'var(--shadow-sm)',
-                                        transition: 'box-shadow 200ms',
+                                        transition: 'box-shadow 200ms, border-color 200ms',
                                     }}
-                                    onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
-                                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.boxShadow = 'var(--shadow-md)'
+                                        e.currentTarget.style.borderColor = 'var(--color-primary)40'
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.boxShadow = 'var(--shadow-sm)'
+                                        e.currentTarget.style.borderColor = 'var(--color-border)'
+                                    }}
                                     aria-label={`Browse ${cat.name} providers`}
                                 >
-                                    {/* Icon circle with gradient */}
                                     <div style={{
                                         width: 52,
                                         height: 52,
@@ -184,11 +176,27 @@ export default function Home() {
                                         color: 'white',
                                         flexShrink: 0,
                                     }}>
-                                        {categoryIcon(cat.name)}
+                                        <CategoryBrowseIcon name={cat.name} description={cat.description} size={26} />
                                     </div>
-                                    <span style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 600, fontSize: '0.8125rem', color: 'var(--color-fg)', lineHeight: 1.3 }}>
-                                        {cat.name}
-                                    </span>
+                                    <div style={{ width: '100%', minWidth: 0 }}>
+                                        <span style={{ display: 'block', fontFamily: 'Poppins, sans-serif', fontWeight: 600, fontSize: '0.9375rem', color: 'var(--color-fg)', lineHeight: 1.35, marginBottom: '0.35rem' }}>
+                                            {cat.name}
+                                        </span>
+                                        {cat.description ? (
+                                            <span style={{
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical' as const,
+                                                overflow: 'hidden',
+                                                fontFamily: 'Poppins, sans-serif',
+                                                fontSize: '0.75rem',
+                                                color: 'var(--color-muted)',
+                                                lineHeight: 1.5,
+                                            }}>
+                                                {cat.description}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                 </motion.button>
                             ))}
                         </div>

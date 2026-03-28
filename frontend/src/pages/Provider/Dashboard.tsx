@@ -15,9 +15,9 @@
 
 import { useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-    CalendarCheck, Star, Clock, ListChecks,
+    CalendarCheck, Star, Clock, ListChecks, CheckCircle2,
     UserCog, ToggleLeft, ToggleRight, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks'
@@ -80,15 +80,12 @@ export default function ProviderDashboard() {
     }, [bookings])
 
     useEffect(() => {
-        // Parallel fetches
-        loadMyProfile()
-        fetchBookings()
-    }, [])
+        void loadMyProfile()
+        void fetchBookings()
+    }, [loadMyProfile, fetchBookings])
 
     const total = bookings.length
     const pending = bookings.filter(b => b.status === 'pending').length
-    const accepted = bookings.filter(b => b.status === 'accepted').length
-    const completed = bookings.filter(b => b.status === 'completed').length
 
     const avgRating = myProfile?.rating ?? 0
     const totalReviews = myProfile?.totalReviews ?? 0
@@ -168,6 +165,8 @@ export default function ProviderDashboard() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2.5rem' }}>
                     <StatCard label="Total Bookings" value={bookingsLoading ? '—' : total} icon={<CalendarCheck size={22} strokeWidth={1.8} />} accent="var(--color-primary)" delay={0.05} />
                     <StatCard label="Pending" value={bookingsLoading ? '—' : pending} icon={<Clock size={22} strokeWidth={1.8} />} accent="#F59E0B" delay={0.1} />
+                    <StatCard label="Accepted" value={bookingsLoading ? '—' : bookings.filter(b => b.status === 'accepted').length} icon={<CheckCircle2 size={22} strokeWidth={1.8} />} accent="#22c55e" delay={0.12} />
+                    <StatCard label="Completed" value={bookingsLoading ? '—' : bookings.filter(b => b.status === 'completed').length} icon={<ListChecks size={22} strokeWidth={1.8} />} accent="#0ea5e9" delay={0.14} />
                     <StatCard label="Avg Rating" value={avgRating > 0 ? avgRating.toFixed(1) : '—'} icon={<Star size={22} strokeWidth={1.8} />} accent="#A78BFA" delay={0.15} />
                     <StatCard label="Total Reviews" value={totalReviews} icon={<Star size={22} strokeWidth={1.8} fill="#A78BFA" />} accent="#A78BFA" delay={0.2} />
                 </div>

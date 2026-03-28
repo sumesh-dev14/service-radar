@@ -12,7 +12,7 @@
  *      Provider  → /provider/dashboard  (then prompted to create profile)
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Briefcase, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
@@ -83,6 +83,54 @@ function Field({ id, label, type = 'text', value, onChange, placeholder, error, 
     )
 }
 
+// ── Role selector card (module scope — stable identity for React refresh / hooks rules) ──
+
+type RoleCardProps = {
+    r: UserRole
+    selected: UserRole
+    onSelect: (role: UserRole) => void
+    icon: ReactNode
+    title: string
+    desc: string
+}
+
+function RoleCard({ r, selected, onSelect, icon, title, desc }: RoleCardProps) {
+    const isSelected = selected === r
+    return (
+        <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => onSelect(r)}
+            style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '1rem 0.75rem',
+                borderRadius: 'var(--radius-lg)',
+                border: `2px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                background: isSelected ? 'var(--color-primary)10' : 'var(--color-bg)',
+                cursor: 'pointer',
+                transition: 'all 200ms ease',
+            }}
+            aria-pressed={isSelected}
+            aria-label={`Register as ${title}`}
+        >
+            <span style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-muted)', transition: 'color 200ms' }}>
+                {icon}
+            </span>
+            <span style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 600, fontSize: '0.875rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-fg)' }}>
+                {title}
+            </span>
+            <span style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', textAlign: 'center', lineHeight: 1.4 }}>
+                {desc}
+            </span>
+        </motion.button>
+    )
+}
+
 // ── Register ──────────────────────────────────────────────────────────────────
 
 export default function Register() {
@@ -146,42 +194,6 @@ export default function Register() {
         }
     }
 
-    // ── Role card ───────────────────────────────────────────────────────────────
-
-    const RoleCard = ({ r, icon, title, desc }: { r: UserRole; icon: React.ReactNode; title: string; desc: string }) => (
-        <motion.button
-            type="button"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setRole(r)}
-            style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '1rem 0.75rem',
-                borderRadius: 'var(--radius-lg)',
-                border: `2px solid ${role === r ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                background: role === r ? 'var(--color-primary)10' : 'var(--color-bg)',
-                cursor: 'pointer',
-                transition: 'all 200ms ease',
-            }}
-            aria-pressed={role === r}
-            aria-label={`Register as ${title}`}
-        >
-            <span style={{ color: role === r ? 'var(--color-primary)' : 'var(--color-muted)', transition: 'color 200ms' }}>
-                {icon}
-            </span>
-            <span style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 600, fontSize: '0.875rem', color: role === r ? 'var(--color-primary)' : 'var(--color-fg)' }}>
-                {title}
-            </span>
-            <span style={{ fontFamily: 'Poppins, sans-serif', fontSize: '0.6875rem', color: 'var(--color-muted)', textAlign: 'center', lineHeight: 1.4 }}>
-                {desc}
-            </span>
-        </motion.button>
-    )
-
     return (
         <main style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem 1.5rem 2rem' }}>
             <motion.div
@@ -211,8 +223,8 @@ export default function Register() {
                                 I want to…
                             </p>
                             <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                <RoleCard r="customer" icon={<User size={22} />} title="Find Services" desc="Book trusted local providers" />
-                                <RoleCard r="provider" icon={<Briefcase size={22} />} title="Offer Services" desc="List your skills and get booked" />
+                                <RoleCard r="customer" selected={role} onSelect={setRole} icon={<User size={22} />} title="Find Services" desc="Book trusted local providers" />
+                                <RoleCard r="provider" selected={role} onSelect={setRole} icon={<Briefcase size={22} />} title="Offer Services" desc="List your skills and get booked" />
                             </div>
                         </div>
 

@@ -40,7 +40,9 @@ export default function AvailableBookings() {
     const [activeTab, setActiveTab] = useState<Tab>('pending')
     const [processingId, setProcessingId] = useState<string | null>(null)
 
-    useEffect(() => { fetchBookings() }, [])
+    useEffect(() => {
+        void fetchBookings()
+    }, [fetchBookings])
 
     const filtered = bookings.filter(b => b.status === activeTab)
 

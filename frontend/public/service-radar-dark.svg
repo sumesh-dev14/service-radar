@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+
+  <!-- Deep blue-green canvas -->
+  <rect x="0" y="0" width="1024" height="1024" rx="182" fill="#12242e"/>
+
+  <!-- Radar arc 1 — outermost, cream (softened) -->
+  <path d="M 234 616 A 278 278 0 0 1 790 616"
+    fill="none" stroke="#fbe2a7" stroke-width="52" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Radar arc 2 — cream (mid) -->
+  <path d="M 281 616 A 231 231 0 0 1 743 616"
+    fill="none" stroke="#fbe2a7" stroke-width="52" stroke-linecap="round" opacity="0.78"/>
+
+  <!-- Radar arc 3 — innermost, full cream -->
+  <path d="M 330 616 A 182 182 0 0 1 694 616"
+    fill="none" stroke="#fbe2a7" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- Pin teardrop — cream -->
+  <path d="M 512 270
+    C 428 270 362 336 362 422
+    C 362 522 468 638 512 682
+    C 556 638 662 522 662 422
+    C 662 336 596 270 512 270 Z"
+    fill="#fbe2a7"/>
+
+  <!-- Pin inner ring cutout — deep bg -->
+  <circle cx="512" cy="412" r="60" fill="#12242e"/>
+
+  <!-- Pin center dot — cream -->
+  <circle cx="512" cy="412" r="34" fill="#fbe2a7"/>
+
+</svg>

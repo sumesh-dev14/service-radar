@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+
+  <!-- Magenta rounded-square canvas -->
+  <rect x="0" y="0" width="1024" height="1024" rx="182" fill="#d04f99"/>
+
+  <!-- Radar arc 1 — outermost, teal -->
+  <path d="M 234 616 A 278 278 0 0 1 790 616"
+    fill="none" stroke="#8acfd1" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- Radar arc 2 — teal -->
+  <path d="M 281 616 A 231 231 0 0 1 743 616"
+    fill="none" stroke="#8acfd1" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- Radar arc 3 — innermost, teal -->
+  <path d="M 330 616 A 182 182 0 0 1 694 616"
+    fill="none" stroke="#8acfd1" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- Pin teardrop — white negative space -->
+  <path d="M 512 270
+    C 428 270 362 336 362 422
+    C 362 522 468 638 512 682
+    C 556 638 662 522 662 422
+    C 662 336 596 270 512 270 Z"
+    fill="white"/>
+
+  <!-- Pin inner ring cutout — magenta (shows canvas) -->
+  <circle cx="512" cy="412" r="60" fill="#d04f99"/>
+
+  <!-- Pin center dot — teal -->
+  <circle cx="512" cy="412" r="34" fill="#8acfd1"/>
+
+</svg>

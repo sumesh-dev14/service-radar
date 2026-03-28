@@ -25,7 +25,6 @@ import {
     LayoutDashboard,
     Search,
     User,
-    Radar,
 } from 'lucide-react'
 import { useTheme } from '@/providers/ThemeProvider'
 import { useAuth } from '@/hooks'
@@ -178,13 +177,24 @@ export function Navbar() {
                         }}
                         aria-label="Service Radar — Home"
                     >
-                        <motion.div
-                            whileHover={{ rotate: 20 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                            style={{ color: 'var(--color-primary)', display: 'flex' }}
-                        >
-                            <Radar size={26} strokeWidth={2} />
-                        </motion.div>
+                        <motion.img
+                            src={theme === 'dark' ? '/service-radar-dark.svg' : '/service-radar-light.svg'}
+                            alt=""
+                            width={34}
+                            height={34}
+                            decoding="async"
+                            draggable={false}
+                            whileHover={{ scale: 1.06 }}
+                            whileTap={{ scale: 0.96 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                            style={{
+                                height: 34,
+                                width: 34,
+                                objectFit: 'contain',
+                                flexShrink: 0,
+                                display: 'block',
+                            }}
+                        />
                         <span
                             style={{
                                 fontFamily: 'Lora, serif',
