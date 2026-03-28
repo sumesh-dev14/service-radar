@@ -16,12 +16,14 @@ export const authMiddleware = async (
 ): Promise<void> => {
   try {
     // Get token from HttpOnly cookie
-    const token = (req.cookies as any).authToken;
-    if (!token) {
-      sendError(res, 401, "Missing authentication cookie");
-      return;
-    }
-
+    const token =
+    (req.cookies as any)?.authToken ||
+    req.headers.authorization?.replace("Bearer ", "");
+  
+  if (!token) {
+    sendError(res, 401, "Missing authentication token");
+    return;
+  }
     // Verify and decode token
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
